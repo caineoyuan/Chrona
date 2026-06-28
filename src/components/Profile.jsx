@@ -1,0 +1,129 @@
+import { useState } from 'react'
+import Icon from './Icon.jsx'
+import { useAuth } from '../auth.jsx'
+
+function PasswordField({ value, onChange, placeholder, autoComplete }) {
+  const [show, setShow] = useState(false)
+  return (
+    <div className="password-field">
+      <input
+        className="auth-input"
+        type={show ? 'text' : 'password'}
+        value={value}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <button
+        type="button"
+        className={`eye-btn ${show ? 'on' : ''}`}
+        onClick={() => setShow((s) => !s)}
+        title={show ? 'Hide password' : 'Show password'}
+        aria-label={show ? 'Hide password' : 'Show password'}
+      >
+        <Icon name="eye" size={20} />
+      </button>
+    </div>
+  )
+}
+
+export default function Profile({ onClose }) {
+  const { user, logout, changePassword } = useAuth()
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [error, setError] = useState('')
+  const [done, setDone] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (busy) return
+    setError('')
+    setDone(false)
+    setBusy(true)
+    try {
+      await changePassword({ currentPassword, newPassword, confirm })
+      setDone(true)
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirm('')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal profile-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="profile-head">
+          <div className="profile-id">
+            <Icon name="profile" size={34} />
+            <span className="profile-name">{user?.username}</span>
+          </div>
+          <button
+            className="icon-btn"
+            onClick={onClose}
+            title="Close"
+            aria-label="Close"
+          >
+            <Icon name="arrow-left" size={20} />
+          </button>
+        </div>
+
+        <form className="profile-form" onSubmit={submit}>
+          <h3 className="section-title">Change password</h3>
+
+          <label className="auth-label">Current password</label>
+          <PasswordField
+            value={currentPassword}
+            onChange={setCurrentPassword}
+            placeholder="current password"
+            autoComplete="current-password"
+          />
+
+          <label className="auth-label">New password</label>
+          <PasswordField
+            value={newPassword}
+            onChange={setNewPassword}
+            placeholder="new password"
+            autoComplete="new-password"
+          />
+
+          <label className="auth-label">Confirm new password</label>
+          <PasswordField
+            value={confirm}
+            onChange={setConfirm}
+            placeholder="re-enter new password"
+            autoComplete="new-password"
+          />
+
+          {error && <p className="auth-error">{error}</p>}
+          {done && <p className="auth-success">Password updated.</p>}
+
+          <div className="profile-actions">
+            <button
+              type="button"
+              className="logout-btn"
+              onClick={logout}
+              title="Sign out"
+            >
+              Sign out
+            </button>
+            <button
+              type="submit"
+              className="auth-submit small"
+              disabled={busy}
+              title="Save new password"
+              aria-label="Save new password"
+            >
+              <Icon name="checkmark" size={22} />
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
