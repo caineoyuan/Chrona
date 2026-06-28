@@ -8,6 +8,7 @@ import {
   isScheduled,
   dateKey,
   scheduleLabel,
+  usedFreezes,
   WEEKDAYS,
 } from '../lib.js'
 
@@ -101,6 +102,11 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate }) {
           <span className="meta-tag">{scheduleLabel(set)}</span>
         )}
         <span className="meta-tag">{set.steps.length} steps</span>
+        {set.trackStreak && (
+          <span className="meta-tag">
+            {usedFreezes(set)} {usedFreezes(set) === 1 ? 'freeze' : 'freezes'} used
+          </span>
+        )}
       </div>
     </div>
   )

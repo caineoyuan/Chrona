@@ -1335,6 +1335,9 @@ input:focus {
 .auth-submit:hover:not(:disabled) {
   transform: translateY(-1px);
 }
+.auth-submit .gi path {
+  stroke: #fff;
+}
 .auth-submit:disabled {
   opacity: 0.5;
   cursor: not-allowed;

@@ -5,7 +5,7 @@ import {
   formatDuration,
   totalSeconds,
   computeStreak,
-  availableFreezes,
+  usedFreezes,
   freezableDate,
   dateKey,
   todayKey,
@@ -134,7 +134,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
   const nodeRefs = useRef({})
 
   const completedToday = Boolean(set.completions?.[todayKey()])
-  const freezes = availableFreezes(set)
+  const freezesUsed = usedFreezes(set)
   const freezeTarget = freezableDate(set)
   const freezeActive = freezeTarget
     ? Boolean(set.freezes?.[dateKey(freezeTarget)])
@@ -293,7 +293,6 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     if (next[k]) {
       delete next[k]
     } else {
-      if (freezes <= 0) return
       next[k] = true
     }
     onUpdate({ ...set, freezes: next })
@@ -354,6 +353,11 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
           {set.trackStreak && (
             <span className="meta-tag">{streak} day streak</span>
           )}
+          {set.trackStreak && (
+            <span className="meta-tag">
+              {freezesUsed} {freezesUsed === 1 ? 'freeze' : 'freezes'} used
+            </span>
+          )}
           {set.loop && <span className="meta-tag">Loops</span>}
         </div>
 
@@ -370,11 +374,10 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
             <button
               className={`freeze-btn ${freezeActive ? 'active' : ''}`}
               onClick={handleFreeze}
-              disabled={freezes <= 0 && !freezeActive}
               title={
                 freezeActive
                   ? 'Freeze active — click to remove'
-                  : `Use a freeze to protect your streak (${freezes} left)`
+                  : 'Use a freeze to protect your streak'
               }
               aria-label="Freeze streak"
             >
