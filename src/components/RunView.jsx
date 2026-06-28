@@ -499,15 +499,6 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
                 ) : (
                   <PlayGlyph />
                 )}
-                <span className="start-label">
-                  {isActiveRun
-                    ? 'Pause'
-                    : phase === 'paused'
-                      ? 'Resume'
-                      : phase === 'done'
-                        ? 'Restart'
-                        : 'Start'}
-                </span>
               </button>
             </div>
           </div>
