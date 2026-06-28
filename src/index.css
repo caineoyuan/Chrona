@@ -1185,7 +1185,7 @@ input:focus {
   color: var(--muted);
 }
 .remember-row input {
-  accent-color: var(--accent);
+  accent-color: var(--bg);
   width: 16px;
   height: 16px;
 }
