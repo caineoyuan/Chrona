@@ -455,7 +455,7 @@ button {
   gap: 10px;
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 2px;
   padding: 10px 12px;
 }
 .step-row.step-break {
@@ -663,7 +663,7 @@ input:focus {
   border: 1px solid var(--line);
   color: var(--text);
   padding: 9px 14px;
-  border-radius: 10px;
+  border-radius: 2px;
   font-size: 13px;
 }
 .freq-btn.active {
@@ -707,10 +707,7 @@ input:focus {
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 14px 16px;
+  padding: 4px 0;
 }
 .toggle-row input {
   width: 20px;
