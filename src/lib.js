@@ -184,14 +184,15 @@ export function availableFreezes(set) {
   return Math.max(0, earnedFreezes(set) - usedFreezes(set))
 }
 
-// The occurrence a freeze would protect: the most proximate *upcoming*
-// scheduled deadline that isn't already completed/frozen. A day's deadline is
-// local midnight, so today still counts as upcoming until then. Starts at today
-// and walks forward.
+// The occurrence a freeze protects: the soonest *upcoming* scheduled deadline
+// that hasn't been completed yet. A day's deadline is local midnight, so today
+// still counts as upcoming until then. Frozen dates are intentionally NOT
+// skipped — the freeze stays "selected" on its instance until that deadline
+// passes (then this advances to the next occurrence) or the set is completed.
 export function freezableDate(set) {
   let d = startOfDay(new Date())
   for (let i = 0; i < 3650; i++) {
-    if (isScheduled(set, d) && !isDone(set, d)) return d
+    if (isScheduled(set, d) && !set.completions?.[dateKey(d)]) return d
     d = addDays(d, 1)
   }
   return d

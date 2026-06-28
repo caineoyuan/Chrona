@@ -835,8 +835,8 @@ input:focus {
   fill: #fff;
 }
 .freeze-btn.active {
-  background: #4a89dc;
-  border-color: #4a89dc;
+  background: var(--accent);
+  border-color: var(--accent);
   opacity: 1;
 }
 .freeze-btn:disabled {

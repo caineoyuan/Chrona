@@ -143,18 +143,28 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
   useEffect(() => () => cancelAnimationFrame(rafRef.current), [])
 
   const markCompleteToday = () => {
+    // Completing the set means today's freeze (if any) wasn't needed — release it.
+    const freezes = { ...set.freezes }
+    delete freezes[todayKey()]
     onUpdate({
       ...set,
       completions: { ...set.completions, [todayKey()]: true },
+      freezes,
     })
   }
 
   const toggleCompleteToday = () => {
     const k = todayKey()
     const completions = { ...set.completions }
-    if (completions[k]) delete completions[k]
-    else completions[k] = true
-    onUpdate({ ...set, completions })
+    const freezes = { ...set.freezes }
+    if (completions[k]) {
+      delete completions[k]
+    } else {
+      completions[k] = true
+      // Completing releases an unused freeze on today's deadline.
+      delete freezes[k]
+    }
+    onUpdate({ ...set, completions, freezes })
   }
 
   const finish = () => {
