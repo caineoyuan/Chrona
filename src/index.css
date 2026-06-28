@@ -667,7 +667,7 @@ input:focus {
 }
 .freq-btn.active {
   background: var(--accent);
-  color: #1a1109;
+  color: #fff;
   border-color: var(--accent);
   font-weight: 600;
 }
@@ -696,7 +696,7 @@ input:focus {
 }
 .day-btn.active {
   background: var(--accent);
-  color: #1a1109;
+  color: #fff;
   border-color: var(--accent);
   font-weight: 600;
 }
