@@ -142,23 +142,10 @@ button {
   border: 1px solid var(--line);
   border-radius: 2px;
   padding: 18px 20px;
+  /* Solid blue rectangle offset ~1mm down & right, sitting behind the card. */
+  box-shadow: 4px 4px 0 0 var(--accent);
   transition: transform 0.12s ease, border-color 0.12s ease;
   cursor: pointer;
-}
-/* Accent "shadow" border: an L just outside the card's right & bottom edges,
-   starting ~3mm in from the top-right and bottom-left, with a rounded
-   bottom-right corner matching the card's 2px radius. */
-.card::after {
-  content: '';
-  position: absolute;
-  top: 11px;
-  left: 11px;
-  right: -4px;
-  bottom: -4px;
-  border-right: 4px solid var(--accent);
-  border-bottom: 4px solid var(--accent);
-  border-bottom-right-radius: 2px;
-  pointer-events: none;
 }
 .card:hover {
   transform: translateY(-2px);
