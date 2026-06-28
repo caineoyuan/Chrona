@@ -1151,6 +1151,11 @@ input:focus {
 .auth-input:focus {
   border-color: var(--accent);
 }
+/* Hide native browser reveal/clear controls (Edge/IE password eye) */
+.auth-input::-ms-reveal,
+.auth-input::-ms-clear {
+  display: none;
+}
 .password-field {
   position: relative;
   display: flex;
