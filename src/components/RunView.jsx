@@ -42,7 +42,7 @@ function fillColor(p) {
   return '#9ACD32'
 }
 
-function TimerCircle({ step, status, progress }) {
+function TimerCircle({ step, status, progress, onTap }) {
   const active = status === 'active'
   const done = status === 'done'
   const p = done ? 1 : active ? progress : 0
@@ -56,8 +56,14 @@ function TimerCircle({ step, status, progress }) {
   const sx = 60 + R * Math.cos(rad)
   const sy = 60 + R * Math.sin(rad)
 
+  const tappable = active && onTap
+
   return (
-    <div className={`timer-circle ${status}`}>
+    <div
+      className={`timer-circle ${status}${tappable ? ' tappable' : ''}`}
+      onClick={tappable ? onTap : undefined}
+      title={tappable ? 'Tap to pause · double-tap to skip' : undefined}
+    >
       <svg viewBox="0 0 120 120" className="ring-svg">
         <circle className="ring-track" cx="60" cy="60" r={R} />
         <circle
@@ -132,6 +138,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
   const deadlineRef = useRef(0)
   const rafRef = useRef(0)
   const nodeRefs = useRef({})
+  const tapTimer = useRef(null)
 
   const completedToday = Boolean(set.completions?.[todayKey()])
   const freezesUsed = usedFreezes(set)
@@ -140,7 +147,13 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     ? Boolean(set.freezes?.[dateKey(freezeTarget)])
     : false
 
-  useEffect(() => () => cancelAnimationFrame(rafRef.current), [])
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(rafRef.current)
+      if (tapTimer.current) clearTimeout(tapTimer.current)
+    },
+    []
+  )
 
   const markCompleteToday = () => {
     // Completing the set means today's freeze (if any) wasn't needed — release it.
@@ -295,6 +308,47 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     setProgress(0)
     setRemaining(0)
     setPhase('idle')
+  }
+
+  // Skip the current timed step and jump to the next one (keeps running).
+  const skipStep = () => {
+    const i = iRef.current
+    if (i < 0 || i >= steps.length) return
+    cancelAnimationFrame(rafRef.current)
+    const next = i + 1
+    if (next >= steps.length) {
+      markCompleteToday()
+      if (set.loop) {
+        startAt(0)
+        return
+      }
+      finish()
+      return
+    }
+    startAt(next)
+  }
+
+  // Single tap on the active timer = pause/resume the whole set.
+  const togglePauseResume = () => {
+    if (phase === 'running') {
+      handlePause()
+    } else if (phase === 'paused') {
+      handleStart()
+    }
+  }
+
+  // Distinguish a single tap (pause/resume) from a double tap (skip).
+  const handleTimerTap = () => {
+    if (tapTimer.current) {
+      clearTimeout(tapTimer.current)
+      tapTimer.current = null
+      skipStep()
+      return
+    }
+    tapTimer.current = setTimeout(() => {
+      tapTimer.current = null
+      togglePauseResume()
+    }, 250)
   }
 
   const handleFreeze = () => {
@@ -475,6 +529,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
                 step={{ ...step, activeRemaining: remaining }}
                 status={stepStatus(i)}
                 progress={i === index ? progress : 0}
+                onTap={handleTimerTap}
               />
             )}
           </div>

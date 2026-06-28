@@ -936,6 +936,11 @@ input:focus {
 .timer-circle.done .ring-center {
   opacity: 0;
 }
+.timer-circle.tappable {
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
 
 /* ---------- No-time (manual check) step ---------- */
 .manual-ring {
