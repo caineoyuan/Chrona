@@ -253,16 +253,18 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, index])
 
-  // Keep the in-progress timer centered on screen. Nothing is fixed —
-  // the whole page scrolls so the active circle slides to the middle.
+  // Keep the in-progress timer fully in view at the bottom of the screen —
+  // align its bottom edge a little above the viewport bottom (radius + padding)
+  // rather than centering it.
   useEffect(() => {
     if (phase === 'idle') return
     const step = index >= 0 && index < steps.length ? steps[index] : null
     const el = step ? nodeRefs.current[step.id] : null
     if (!el) return
     const rect = el.getBoundingClientRect()
-    const target =
-      rect.top + window.scrollY - window.innerHeight / 2 + rect.height / 2
+    const padding = 24
+    const desiredBottom = window.innerHeight - padding
+    const target = rect.bottom + window.scrollY - desiredBottom
     window.scrollTo({ top: Math.max(0, target), behavior: 'smooth' })
   }, [index, phase, steps])
 
