@@ -1130,6 +1130,15 @@ input:focus {
     width: 60px;
     height: 60px;
   }
+  /* Let the step row wrap so the up/down/delete controls drop below the
+     name instead of bleeding off the card edge. */
+  .step-row {
+    flex-wrap: wrap;
+  }
+  .step-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 /* ---------- Auth: profile button in topbar ---------- */
 .profile-btn {
