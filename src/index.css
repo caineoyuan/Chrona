@@ -59,7 +59,7 @@ button {
   padding: 14px 20px;
   background: linear-gradient(160deg, var(--card), var(--card-2));
   backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 4px solid var(--accent);
 }
 .brand {
   display: flex;
@@ -139,6 +139,8 @@ button {
 .card {
   background: linear-gradient(160deg, var(--card), var(--card-2));
   border: 1px solid var(--line);
+  border-right: 4px solid var(--accent);
+  border-bottom: 4px solid var(--accent);
   border-radius: 2px;
   padding: 18px 20px;
   transition: transform 0.12s ease, border-color 0.12s ease;
