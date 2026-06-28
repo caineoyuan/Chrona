@@ -142,8 +142,8 @@ button {
   border: 1px solid var(--line);
   border-radius: 2px;
   padding: 18px 20px;
-  /* Solid blue rectangle offset ~1mm down & right, plus a soft drop shadow. */
-  box-shadow: 4px 4px 0 0 var(--accent), 6px 8px 14px rgba(0, 0, 0, 0.45);
+  /* Card casts a soft shadow onto a solid blue rectangle offset ~1mm behind. */
+  box-shadow: 2px 3px 7px rgba(0, 0, 0, 0.5), 4px 4px 0 0 var(--accent);
   transition: transform 0.12s ease, border-color 0.12s ease;
   cursor: pointer;
 }
