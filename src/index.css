@@ -625,7 +625,7 @@ input:focus {
 }
 .circle-btn.active {
   background: var(--accent);
-  color: #1a1109;
+  color: #fff;
   border-color: var(--accent);
   font-weight: 600;
 }
@@ -940,6 +940,7 @@ input:focus {
   cursor: pointer;
   -webkit-user-select: none;
   user-select: none;
+  touch-action: manipulation;
 }
 
 /* ---------- No-time (manual check) step ---------- */
