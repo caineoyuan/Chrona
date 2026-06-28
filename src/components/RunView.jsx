@@ -42,7 +42,7 @@ function fillColor(p) {
   return '#9ACD32'
 }
 
-function TimerCircle({ step, status, progress, onTap }) {
+function TimerCircle({ step, status, progress, onTap, paused }) {
   const active = status === 'active'
   const done = status === 'done'
   const p = done ? 1 : active ? progress : 0
@@ -90,6 +90,13 @@ function TimerCircle({ step, status, progress, onTap }) {
           <span className="ring-time-faded">{clock(step.seconds)}</span>
         )}
       </div>
+      {active && paused && (
+        <span className="ring-paused" aria-hidden="true">
+          <svg className="ctrl-glyph" viewBox="0 0 24 24">
+            <path d="M8 5.5v13a1 1 0 0 0 1.5.87l11-6.5a1 1 0 0 0 0-1.74l-11-6.5A1 1 0 0 0 8 5.5z" />
+          </svg>
+        </span>
+      )}
       {done && <span className="ring-side-name">{name}</span>}
     </div>
   )
@@ -530,6 +537,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
                 status={stepStatus(i)}
                 progress={i === index ? progress : 0}
                 onTap={handleTimerTap}
+                paused={phase === 'paused'}
               />
             )}
           </div>
