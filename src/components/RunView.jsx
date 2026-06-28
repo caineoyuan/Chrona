@@ -89,6 +89,38 @@ function TimerCircle({ step, status, progress }) {
   )
 }
 
+// A no-time step: a circular button the user clicks to mark complete.
+function ManualCircle({ step, status, onComplete }) {
+  const done = status === 'done'
+  const active = status === 'active'
+  const name = step.name || 'Exercise'
+  return (
+    <div className={`timer-circle manual ${status}`}>
+      <button
+        type="button"
+        className="manual-ring"
+        onClick={active ? onComplete : undefined}
+        disabled={!active}
+        title={active ? 'Tap to complete' : name}
+        aria-label={active ? `Complete ${name}` : name}
+      >
+        <span className="manual-check">
+          <Icon name="checkmark" size={done ? 30 : 64} />
+        </span>
+      </button>
+      <div className="ring-center">
+        <span className="ring-name">{name}</span>
+        {!done && (
+          <span className="ring-time-faded">
+            {active ? 'Tap to complete' : 'No time'}
+          </span>
+        )}
+      </div>
+      {done && <span className="ring-side-name">{name}</span>}
+    </div>
+  )
+}
+
 export default function RunView({ set, onUpdate, onEdit, onBack }) {
   const steps = set.steps
   const [phase, setPhase] = useState('idle') // idle | running | paused | done
@@ -141,7 +173,16 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     }
     iRef.current = i
     setIndex(i)
-    const dur = steps[i].seconds
+    const step = steps[i]
+    // No-time step: wait for a manual check instead of running a timer.
+    if (step.noTime) {
+      cancelAnimationFrame(rafRef.current)
+      setRemaining(0)
+      setProgress(0)
+      setPhase('manual')
+      return
+    }
+    const dur = step.seconds
     deadlineRef.current = performance.now() + dur * 1000
     setRemaining(dur)
     setProgress(0)
@@ -159,19 +200,37 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
         markCompleteToday()
         if (set.loop) {
           startAt(0)
-          rafRef.current = requestAnimationFrame(tick)
+          if (!steps[0].noTime) rafRef.current = requestAnimationFrame(tick)
           return
         }
         finish()
         return
       }
       startAt(next)
-      rafRef.current = requestAnimationFrame(tick)
+      // Only keep the RAF loop going if the next step is itself a timer.
+      if (!steps[next].noTime) rafRef.current = requestAnimationFrame(tick)
       return
     }
     setRemaining(rem)
     setProgress(1 - rem / dur)
     rafRef.current = requestAnimationFrame(tick)
+  }
+
+  // Advance past a no-time step when the user checks it off.
+  const manualComplete = () => {
+    const i = iRef.current
+    if (i < 0 || i >= steps.length) return
+    const next = i + 1
+    if (next >= steps.length) {
+      markCompleteToday()
+      if (set.loop) {
+        startAt(0)
+        return
+      }
+      finish()
+      return
+    }
+    startAt(next)
   }
 
   // (re)start the animation loop whenever we enter running phase
@@ -200,6 +259,11 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
   const handleStart = () => {
     if (steps.length === 0) return
     if (phase === 'paused') {
+      const step = steps[iRef.current]
+      if (step && step.noTime) {
+        setPhase('manual')
+        return
+      }
       deadlineRef.current = performance.now() + remaining * 1000
       setPhase('running')
       return
@@ -236,7 +300,12 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
   }
 
   const streak = computeStreak(set)
-  const startActive = phase === 'running' || phase === 'paused' || phase === 'done'
+  const startActive =
+    phase === 'running' ||
+    phase === 'paused' ||
+    phase === 'manual' ||
+    phase === 'done'
+  const isActiveRun = phase === 'running' || phase === 'manual'
 
   // overall progress across the whole set, for the start-button ring
   const totalTime = totalSeconds(set)
@@ -339,7 +408,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
               <button
                 className={`start-circle ${startActive ? 'engaged' : ''}`}
                 onClick={
-                  phase === 'running'
+                  isActiveRun
                     ? handlePause
                     : phase === 'done'
                       ? handleReset
@@ -347,7 +416,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
                 }
                 disabled={steps.length === 0}
               >
-                {phase === 'running' ? (
+                {isActiveRun ? (
                   <PauseGlyph />
                 ) : phase === 'done' ? (
                   <RestartGlyph />
@@ -355,7 +424,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
                   <PlayGlyph />
                 )}
                 <span className="start-label">
-                  {phase === 'running'
+                  {isActiveRun
                     ? 'Pause'
                     : phase === 'paused'
                       ? 'Resume'
@@ -380,11 +449,19 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
             }}
           >
             {i > 0 && <div className="connector" />}
-            <TimerCircle
-              step={{ ...step, activeRemaining: remaining }}
-              status={stepStatus(i)}
-              progress={i === index ? progress : 0}
-            />
+            {step.noTime ? (
+              <ManualCircle
+                step={step}
+                status={stepStatus(i)}
+                onComplete={manualComplete}
+              />
+            ) : (
+              <TimerCircle
+                step={{ ...step, activeRemaining: remaining }}
+                status={stepStatus(i)}
+                progress={i === index ? progress : 0}
+              />
+            )}
           </div>
         ))}
 

@@ -55,7 +55,7 @@ export function newSet() {
   return {
     id: uid(),
     name: 'New Set',
-    steps: [],
+    steps: [{ id: uid(), type: 'exercise', name: '', seconds: 60 }],
     schedule: [], // weekday numbers 0(Sun)-6(Sat); empty = every day
     trackStreak: true,
     loop: false,

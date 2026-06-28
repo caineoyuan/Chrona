@@ -123,6 +123,16 @@ function StepRow({
     setter(String(n).padStart(2, '0'))
   }
 
+  const toggleNoTime = () => {
+    if (step.noTime) {
+      setMins('01')
+      setSecs('00')
+      onChange({ ...step, noTime: false, seconds: 60 })
+    } else {
+      onChange({ ...step, noTime: true, seconds: 0 })
+    }
+  }
+
   return (
     <div className={`step-row step-${step.type}`}>
       <div className="step-index">{index + 1}</div>
@@ -142,38 +152,59 @@ function StepRow({
           </span>
         )}
         <div className="time-fields">
-          <input
-            ref={minRef}
-            className="time-seg"
-            type="text"
-            inputMode="numeric"
-            value={mins}
-            onChange={onMinsChange}
-            onKeyDown={onMinsKeyDown}
-            onFocus={(e) => e.target.select()}
-            onBlur={padBlur((v) => {
-              setMins(v)
-              commit(v, secs)
-            })}
-            aria-label="minutes"
-          />
-          <span className="time-colon">:</span>
-          <input
-            ref={secRef}
-            className="time-seg"
-            type="text"
-            inputMode="numeric"
-            value={secs}
-            onChange={onSecsChange}
-            onKeyDown={onSecsKeyDown}
-            onFocus={(e) => e.target.select()}
-            onBlur={padBlur((v) => {
-              const clamped = String(Math.min(59, parseInt(v, 10) || 0)).padStart(2, '0')
-              setSecs(clamped)
-              commit(mins, clamped)
-            })}
-            aria-label="seconds"
-          />
+          {step.noTime ? (
+            <span className="no-time-label">No time</span>
+          ) : (
+            <>
+              <input
+                ref={minRef}
+                className="time-seg"
+                type="text"
+                inputMode="numeric"
+                value={mins}
+                onChange={onMinsChange}
+                onKeyDown={onMinsKeyDown}
+                onFocus={(e) => e.target.select()}
+                onBlur={padBlur((v) => {
+                  setMins(v)
+                  commit(v, secs)
+                })}
+                aria-label="minutes"
+              />
+              <span className="time-colon">:</span>
+              <input
+                ref={secRef}
+                className="time-seg"
+                type="text"
+                inputMode="numeric"
+                value={secs}
+                onChange={onSecsChange}
+                onKeyDown={onSecsKeyDown}
+                onFocus={(e) => e.target.select()}
+                onBlur={padBlur((v) => {
+                  const clamped = String(Math.min(59, parseInt(v, 10) || 0)).padStart(2, '0')
+                  setSecs(clamped)
+                  commit(mins, clamped)
+                })}
+                aria-label="seconds"
+              />
+            </>
+          )}
+          {step.type === 'exercise' && (
+            <button
+              type="button"
+              className={`no-time-toggle ${step.noTime ? 'active' : ''}`}
+              onClick={toggleNoTime}
+              title={
+                step.noTime
+                  ? 'Has no timer — check off to complete. Click to add a timer.'
+                  : 'Make this a no-timer step you check off to complete'
+              }
+              aria-pressed={step.noTime}
+            >
+              No&nbsp;time
+            </button>
+          )}
         </div>
       </div>
       <div className="step-actions">

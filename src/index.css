@@ -538,6 +538,32 @@ button {
   display: flex;
   gap: 4px;
 }
+.no-time-toggle {
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.no-time-toggle:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.no-time-toggle.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.no-time-label {
+  font-size: 14px;
+  color: var(--muted);
+  font-style: italic;
+  padding: 8px 2px;
+}
 input:focus {
   outline: none;
   border-color: var(--accent);
@@ -908,6 +934,42 @@ input:focus {
 }
 .timer-circle.done .ring-center {
   opacity: 0;
+}
+
+/* ---------- No-time (manual check) step ---------- */
+.manual-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 5px solid var(--line);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: border-color 0.3s ease, background 0.3s ease;
+}
+.timer-circle.manual.active .manual-ring {
+  border-color: var(--accent);
+  cursor: pointer;
+}
+.timer-circle.manual.active .manual-ring:hover {
+  background: rgba(49, 140, 231, 0.12);
+}
+.timer-circle.manual.done .manual-ring {
+  border-color: var(--accent-2);
+  background: var(--accent-2);
+}
+.manual-check {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  display: inline-flex;
+}
+.manual-check .gi path {
+  stroke: #fff;
+}
+.timer-circle.manual.done .manual-check {
+  opacity: 1;
 }
 .ring-side-name {
   position: absolute;
