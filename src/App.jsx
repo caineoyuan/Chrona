@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSets, newSet, uid } from './storage.js'
+import { todayKey } from './lib.js'
 import { useAuth } from './auth.jsx'
 import Icon from './components/Icon.jsx'
 import Home from './components/Home.jsx'
@@ -7,6 +8,35 @@ import SetEditor from './components/SetEditor.jsx'
 import RunView from './components/RunView.jsx'
 import Login from './components/Login.jsx'
 import Profile from './components/Profile.jsx'
+
+// Re-render at local midnight (and on refocus) so date-based values stay fresh.
+function useDayKey() {
+  const [day, setDay] = useState(todayKey())
+  useEffect(() => {
+    let timer
+    const schedule = () => {
+      const now = new Date()
+      const next = new Date(now)
+      next.setHours(24, 0, 0, 0) // next local midnight
+      timer = setTimeout(() => {
+        setDay(todayKey())
+        schedule()
+      }, next - now + 50)
+    }
+    const refresh = () => {
+      if (document.visibilityState === 'visible') setDay(todayKey())
+    }
+    schedule()
+    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('focus', refresh)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [])
+  return day
+}
 
 export default function App() {
   const { user, loading } = useAuth()
@@ -26,6 +56,9 @@ export default function App() {
 
 function Workspace() {
   const [sets, setSets, loaded] = useSets()
+  // Re-render the whole tree at local midnight (and on refocus) so date-based
+  // values — streaks, today's completion, freezable date — never go stale.
+  useDayKey()
   const [profileOpen, setProfileOpen] = useState(false)
   // view: { name: 'home' } | { name: 'edit', id } | { name: 'run', id }
   const [view, setView] = useState({ name: 'home' })

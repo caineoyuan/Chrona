@@ -273,18 +273,27 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, index])
 
-  // Keep the in-progress timer fully in view at the bottom of the screen —
-  // align its bottom edge a little above the viewport bottom (radius + padding)
-  // rather than centering it.
+  // Auto-scroll behaviour:
+  // • On resume (paused -> running) center the active timer on screen.
+  // • On a normal step advance, align its bottom just above the viewport bottom.
+  // • Don't scroll when pausing.
+  const prevPhaseRef = useRef('idle')
   useEffect(() => {
-    if (phase === 'idle') return
+    const prev = prevPhaseRef.current
+    prevPhaseRef.current = phase
+    if (phase === 'idle' || phase === 'paused') return
     const step = index >= 0 && index < steps.length ? steps[index] : null
     const el = step ? nodeRefs.current[step.id] : null
     if (!el) return
     const rect = el.getBoundingClientRect()
-    const padding = 24
-    const desiredBottom = window.innerHeight - padding
-    const target = rect.bottom + window.scrollY - desiredBottom
+    const resumed = prev === 'paused' && phase === 'running'
+    let target
+    if (resumed) {
+      target = rect.top + window.scrollY - window.innerHeight / 2 + rect.height / 2
+    } else {
+      const padding = 24
+      target = rect.bottom + window.scrollY - (window.innerHeight - padding)
+    }
     window.scrollTo({ top: Math.max(0, target), behavior: 'smooth' })
   }, [index, phase, steps])
 
@@ -359,6 +368,8 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
   }
 
   const handleFreeze = () => {
+    // A completed day can't be frozen.
+    if (completedToday) return
     const d = freezableDate(set)
     if (!d) return
     const k = dateKey(d)
@@ -447,10 +458,13 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
             <button
               className={`freeze-btn ${freezeActive ? 'active' : ''}`}
               onClick={handleFreeze}
+              disabled={completedToday}
               title={
-                freezeActive
-                  ? 'Freeze active — click to remove'
-                  : 'Use a freeze to protect your streak'
+                completedToday
+                  ? "Completed today — can't freeze"
+                  : freezeActive
+                    ? 'Freeze active — click to remove'
+                    : 'Use a freeze to protect your streak'
               }
               aria-label="Freeze streak"
             >
