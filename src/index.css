@@ -269,8 +269,7 @@ button {
   font-size: 44px;
   margin: 0 0 8px;
 }
-.empty .i8,
-.empty .gi {
+.empty > .gi {
   margin-bottom: 10px;
   opacity: 0.85;
 }

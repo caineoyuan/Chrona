@@ -115,14 +115,16 @@ export default function Home({ sets, onAdd, onOpen, onEdit, onDelete, onDuplicat
         <div>
           <h1 className="page-title">Your Sets</h1>
         </div>
-        <button
-          className="add-circle-btn"
-          onClick={onAdd}
-          title="New set"
-          aria-label="New set"
-        >
-          <Icon name="add-circle" size={44} />
-        </button>
+        {sets.length > 0 && (
+          <button
+            className="add-circle-btn"
+            onClick={onAdd}
+            title="New set"
+            aria-label="New set"
+          >
+            <Icon name="add-circle" size={44} />
+          </button>
+        )}
       </div>
 
       {sets.length === 0 ? (
