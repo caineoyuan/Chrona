@@ -137,14 +137,35 @@ button {
   gap: 16px;
 }
 .card {
+  position: relative;
   background: linear-gradient(160deg, var(--card), var(--card-2));
   border: 1px solid var(--line);
-  border-right: 4px solid var(--accent);
-  border-bottom: 4px solid var(--accent);
   border-radius: 2px;
   padding: 18px 20px;
   transition: transform 0.12s ease, border-color 0.12s ease;
   cursor: pointer;
+}
+/* Accent "shadow" lines: right edge stops ~3mm below the top, bottom edge
+   stops ~3mm before the left, meeting at the bottom-right corner. */
+.card::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: 11px;
+  bottom: -1px;
+  width: 4px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.card::before {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 11px;
+  right: -1px;
+  height: 4px;
+  background: var(--accent);
+  pointer-events: none;
 }
 .card:hover {
   transform: translateY(-2px);
