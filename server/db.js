@@ -10,11 +10,15 @@ if (!connectionString) {
   )
 }
 
-// Railway (and most hosted Postgres) require SSL; local dev does not.
+// SSL rules:
+//  - Local dev (localhost) → no SSL.
+//  - Railway's PRIVATE network (*.railway.internal) → no SSL (not supported there).
+//  - Anything else in production, or an explicit sslmode=require → SSL on.
+const isLocal = /localhost|127\.0\.0\.1/.test(connectionString || '')
+const isRailwayInternal = /railway\.internal/.test(connectionString || '')
 const useSsl =
   /sslmode=require/.test(connectionString || '') ||
-  (process.env.NODE_ENV === 'production' &&
-    !/localhost|127\.0\.0\.1/.test(connectionString || ''))
+  (process.env.NODE_ENV === 'production' && !isLocal && !isRailwayInternal)
 
 export const pool = new Pool({
   connectionString,
