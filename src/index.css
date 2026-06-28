@@ -1223,6 +1223,11 @@ input:focus {
   font-size: 13px;
   margin: 14px 0 0;
 }
+.mismatch-msg {
+  color: #CE2029;
+  font-size: 13px;
+  margin: 6px 0 0;
+}
 .auth-success {
   color: var(--accent-2);
   font-size: 13px;

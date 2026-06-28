@@ -69,7 +69,7 @@ export default function Profile({ onClose }) {
             title="Close"
             aria-label="Close"
           >
-            <Icon name="arrow-left" size={20} />
+            <Icon name="close" size={20} />
           </button>
         </div>
 
@@ -99,6 +99,9 @@ export default function Profile({ onClose }) {
             placeholder="re-enter new password"
             autoComplete="new-password"
           />
+          {confirm && confirm !== newPassword && (
+            <p className="mismatch-msg">Passwords do not match</p>
+          )}
 
           {error && <p className="auth-error">{error}</p>}
           {done && <p className="auth-success">Password updated.</p>}

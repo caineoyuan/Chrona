@@ -98,6 +98,9 @@ export default function Login() {
               placeholder="re-enter password"
               autoComplete="new-password"
             />
+            {confirm && confirm !== password && (
+              <p className="mismatch-msg">Passwords do not match</p>
+            )}
 
             <label className="auth-label">Registration key</label>
             <PasswordField
