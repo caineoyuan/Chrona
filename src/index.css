@@ -1185,9 +1185,34 @@ input:focus {
   color: var(--muted);
 }
 .remember-row input {
-  accent-color: var(--bg);
-  width: 16px;
-  height: 16px;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--bg);
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.remember-row input::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  transform: scale(0);
+  transition: transform 0.12s ease;
+  background: #fff;
+  clip-path: polygon(14% 44%, 0 60%, 40% 100%, 100% 22%, 84% 8%, 38% 70%);
+}
+.remember-row input:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.remember-row input:checked::before {
+  transform: scale(1);
 }
 .auth-error {
   color: #ff7a7a;
