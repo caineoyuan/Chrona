@@ -145,27 +145,19 @@ button {
   transition: transform 0.12s ease, border-color 0.12s ease;
   cursor: pointer;
 }
-/* Accent "shadow" lines sit flush just outside the card edge; right line
-   stops ~3mm below the top, bottom line stops ~3mm before the left, meeting
-   at the bottom-right corner. */
+/* Accent "shadow" border: an L just outside the card's right & bottom edges,
+   starting ~3mm in from the top-right and bottom-left, with a rounded
+   bottom-right corner matching the card's 2px radius. */
 .card::after {
   content: '';
   position: absolute;
-  right: -4px;
   top: 11px;
-  bottom: -4px;
-  width: 4px;
-  background: var(--accent);
-  pointer-events: none;
-}
-.card::before {
-  content: '';
-  position: absolute;
-  bottom: -4px;
   left: 11px;
   right: -4px;
-  height: 4px;
-  background: var(--accent);
+  bottom: -4px;
+  border-right: 4px solid var(--accent);
+  border-bottom: 4px solid var(--accent);
+  border-bottom-right-radius: 2px;
   pointer-events: none;
 }
 .card:hover {
