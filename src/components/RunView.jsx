@@ -134,20 +134,29 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
   const steps = set.steps
   const hasTimers = steps.some((s) => !s.noTime)
   const swipe = useRef(null)
+  const [dragX, setDragX] = useState(0)
   const onNavStart = (e) => {
     const t = e.touches[0]
-    swipe.current = { x: t.clientX, y: t.clientY }
+    swipe.current = { x: t.clientX, y: t.clientY, ok: false }
   }
-  const onNavEnd = (e) => {
+  const onNavMove = (e) => {
     if (!swipe.current) return
-    const t = e.changedTouches[0]
-    const dx = t.clientX - swipe.current.x
-    const dy = t.clientY - swipe.current.y
-    swipe.current = null
-    if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.6) {
-      if (dx > 0) onBack()
-      else onEdit()
+    const dx = e.touches[0].clientX - swipe.current.x
+    const dy = e.touches[0].clientY - swipe.current.y
+    if (!swipe.current.ok) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+      swipe.current.ok = Math.abs(dx) > Math.abs(dy) * 1.4
+      if (!swipe.current.ok) { swipe.current = null; return }
     }
+    setDragX(dx)
+  }
+  const onNavEnd = () => {
+    if (!swipe.current) { setDragX(0); return }
+    swipe.current = null
+    const t = window.innerWidth * 0.4
+    if (dragX > t) onBack()
+    else if (dragX < -t) onEdit()
+    else setDragX(0)
   }
   // Current cycle = most recent scheduled occurrence; stays "done" until the
   // next due date arrives or the user unchecks complete.
@@ -493,7 +502,13 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
   }
 
   return (
-    <div className="run" onTouchStart={onNavStart} onTouchEnd={onNavEnd}>
+    <div
+      className="run"
+      style={{ transform: dragX ? `translateX(${dragX}px)` : undefined, transition: dragX ? 'none' : 'transform 0.2s ease' }}
+      onTouchStart={onNavStart}
+      onTouchMove={onNavMove}
+      onTouchEnd={onNavEnd}
+    >
       <div className="run-fixed">
         <div className="run-head">
           <button className="icon-btn" onClick={onBack} title="Back" aria-label="Back">
