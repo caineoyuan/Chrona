@@ -48,6 +48,33 @@ router.post('/unsubscribe', requireAuth, async (req, res) => {
   }
 })
 
+router.post('/test', requireAuth, async (req, res) => {
+  if (!configured) return res.status(400).json({ error: 'Push not configured on server.' })
+  try {
+    const subs = (
+      await query('SELECT endpoint, subscription FROM push_subscriptions WHERE user_id = $1', [req.userId])
+    ).rows
+    if (!subs.length) return res.status(404).json({ error: 'No devices subscribed yet. Turn on a bell first.' })
+    const payload = JSON.stringify({
+      title: 'Chrona',
+      body: 'Test reminder — notifications are working! 🔥',
+      tag: `test-${Date.now()}`,
+    })
+    await Promise.all(
+      subs.map((s) =>
+        webpush.sendNotification(JSON.parse(s.subscription), payload).catch(async (err) => {
+          if (err?.statusCode === 404 || err?.statusCode === 410)
+            await query('DELETE FROM push_subscriptions WHERE endpoint = $1', [s.endpoint]).catch(() => {})
+        }),
+      ),
+    )
+    res.json({ ok: true, sent: subs.length })
+  } catch (err) {
+    console.error('test push error', err)
+    res.status(500).json({ error: 'Could not send test.' })
+  }
+})
+
 // What time is it (HH:MM) in a given IANA timezone right now?
 function tzNow(tz) {
   try {

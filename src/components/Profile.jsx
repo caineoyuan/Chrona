@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import Icon from './Icon.jsx'
 import { useAuth } from '../auth.jsx'
+import { api } from '../auth.jsx'
+import { subscribePush, pushSupported } from '../push.js'
 
 function PasswordField({ value, onChange, placeholder, autoComplete }) {
   const [show, setShow] = useState(false)
@@ -35,6 +37,22 @@ export default function Profile({ onClose }) {
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [testMsg, setTestMsg] = useState('')
+
+  const sendTest = async () => {
+    setTestMsg('Sending…')
+    try {
+      const ok = await subscribePush()
+      if (!ok) {
+        setTestMsg('Enable notifications first (tap a set’s bell and allow).')
+        return
+      }
+      const r = await api('/api/push/test', { method: 'POST' })
+      setTestMsg(`Sent to ${r.sent} device(s). Check your notifications.`)
+    } catch (e) {
+      setTestMsg(e.message || 'Could not send test.')
+    }
+  }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -74,6 +92,15 @@ export default function Profile({ onClose }) {
         </div>
 
         <form className="profile-form" onSubmit={submit}>
+          {pushSupported() && (
+            <>
+              <h3 className="section-title">Notifications</h3>
+              <button type="button" className="logout-btn" onClick={sendTest} title="Send a test notification">
+                Send test notification
+              </button>
+              {testMsg && <p className="auth-success">{testMsg}</p>}
+            </>
+          )}
           <h3 className="section-title">Change password</h3>
 
           <label className="auth-label">Current password</label>
