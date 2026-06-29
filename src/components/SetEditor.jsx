@@ -191,6 +191,15 @@ function StepRow({
             </>
           )}
         </div>
+        {step.type === 'exercise' && (
+          <textarea
+            className="step-notes-input"
+            value={step.notes || ''}
+            placeholder="Notes (optional) — paste a link or YouTube URL"
+            rows={2}
+            onChange={(e) => onChange({ ...step, notes: e.target.value })}
+          />
+        )}
       </div>
       <div className="step-actions">
         <button className="icon-btn" disabled={isFirst} onClick={() => onMove(-1)} title="Move up">

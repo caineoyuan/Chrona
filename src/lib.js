@@ -252,6 +252,26 @@ export function freezableDate(set) {
 }
 
 export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+// ── Step notes parsing ─────────────────────────────────────────────
+const URL_RE = /(https?:\/\/[^\s]+)/i
+
+// Pull the first URL from notes; return { url, text, youtubeId }.
+export function parseNotes(notes) {
+  const raw = (notes || '').trim()
+  if (!raw) return { url: null, text: '', youtubeId: null }
+  const m = raw.match(URL_RE)
+  const url = m ? m[0] : null
+  const text = url ? raw.replace(url, '').trim() : raw
+  let youtubeId = null
+  if (url) {
+    const y = url.match(
+      /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/i,
+    )
+    if (y) youtubeId = y[1]
+  }
+  return { url, text, youtubeId }
+}
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 const ordinal = (n) => {

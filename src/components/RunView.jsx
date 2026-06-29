@@ -10,6 +10,7 @@ import {
   dateKey,
   todayKey,
   lastScheduledDates,
+  parseNotes,
 } from '../lib.js'
 import { ensurePermission } from '../notify.js'
 import { subscribePush } from '../push.js'
@@ -126,6 +127,43 @@ function ManualCircle({ step, status, onComplete, onReopen }) {
         {!done && <span className="ring-time-faded">Tap to complete</span>}
       </div>
       {done && <span className="ring-side-name">{name}</span>}
+    </div>
+  )
+}
+
+function StepNotes({ notes }) {
+  const { url, text, youtubeId } = parseNotes(notes)
+  const [open, setOpen] = useState(false)
+  if (!url && !text) return null
+  return (
+    <div className="step-notes">
+      {youtubeId && (
+        <div className="yt-embed">
+          <iframe
+            src={`https://www.youtube.com/embed/${youtubeId}`}
+            title="YouTube video"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
+      )}
+      <div className="step-notes-row">
+        {url && (
+          <a className="notes-link-btn" href={url} target="_blank" rel="noopener noreferrer">
+            {youtubeId ? 'Open on YouTube' : 'Open link'}
+          </a>
+        )}
+        {url && text && (
+          <button
+            className="notes-toggle"
+            onClick={() => setOpen((o) => !o)}
+            title={open ? 'Hide notes' : 'Show notes'}
+          >
+            <Icon name="chevron-up" size={16} className={open ? '' : 'flip'} />
+          </button>
+        )}
+      </div>
+      {(!url || (open && text)) && text && <p className="notes-text">{text}</p>}
     </div>
   )
 }
@@ -645,6 +683,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
                 paused={phase === 'paused'}
               />
             )}
+            {step.notes && <StepNotes notes={step.notes} />}
           </div>
         ))}
 
