@@ -81,7 +81,7 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate }) {
   const start = useRef(null)
   const base = useRef(0)
   const moved = useRef(false)
-  const REVEAL = 132
+  const REVEAL = 64
   const onStart = (x) => {
     start.current = x
     base.current = dx
