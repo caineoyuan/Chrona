@@ -149,17 +149,6 @@ function StepNotes({ notes, active, paused, done }) {
   const ytSrc = `https://www.youtube.com/embed/${youtubeId}?enablejsapi=1&mute=1`
   return (
     <div className="step-notes">
-      {youtubeId && !done && (
-        <div className="yt-embed">
-          <iframe
-            ref={frame}
-            src={ytSrc}
-            title="YouTube video"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-          />
-        </div>
-      )}
       <div className="step-notes-row">
         {url && !youtubeId && (
           <a className="notes-link-btn" href={url} target="_blank" rel="noopener noreferrer" title="Open link">
@@ -177,6 +166,17 @@ function StepNotes({ notes, active, paused, done }) {
         )}
       </div>
       {(!url || (open && text)) && text && <p className="notes-text">{text}</p>}
+      {youtubeId && !done && (
+        <div className="yt-embed">
+          <iframe
+            ref={frame}
+            src={ytSrc}
+            title="YouTube video"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
+      )}
     </div>
   )
 }
