@@ -427,14 +427,14 @@ export default function SetEditor({ set, onSave, onDelete, onCancel }) {
             className={`freq-btn ${sc.mode === 'weekly' ? 'active' : ''}`}
             onClick={() => updateSchedule({ mode: 'weekly' })}
           >
-            X times a week
+            # of Days a Week
           </button>
         </div>
 
         {sc.mode === 'weekly' ? (
           <>
             <p className="muted small">
-              Do this set a target number of times each week. Counts reset
+              Do this set a target number of days each week. Counts reset
               Sunday; the week is judged Saturday 11:59 PM.
             </p>
             <div className="month-grid">
