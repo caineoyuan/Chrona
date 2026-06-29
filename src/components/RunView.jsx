@@ -130,12 +130,14 @@ function ManualCircle({ step, status, onComplete, onReopen }) {
 export default function RunView({ set, onUpdate, onEdit, onBack }) {
   const steps = set.steps
   const hasTimers = steps.some((s) => !s.noTime)
-  const [phase, setPhase] = useState('idle') // idle | running | paused | done
-  const [index, setIndex] = useState(-1)
+  const doneTodayInit = Boolean(set.completions?.[todayKey()])
+  // If already completed today, open with every ring shown as done.
+  const [phase, setPhase] = useState(doneTodayInit ? 'done' : 'idle') // idle | running | paused | done
+  const [index, setIndex] = useState(doneTodayInit ? steps.length : -1)
   const [progress, setProgress] = useState(0)
   const [remaining, setRemaining] = useState(0)
 
-  const iRef = useRef(-1)
+  const iRef = useRef(doneTodayInit ? steps.length : -1)
   const deadlineRef = useRef(0)
   const rafRef = useRef(0)
   const nodeRefs = useRef({})
