@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSets, newSet, uid } from './storage.js'
 import { todayKey } from './lib.js'
 import { useReminders } from './notify.js'
@@ -78,6 +78,33 @@ function Workspace() {
     setDir(direction)
     setView(next)
   }
+
+  const fromPop = useRef(false)
+  const didInit = useRef(false)
+  useEffect(() => {
+    window.history.replaceState({ view: { name: 'home' }, profileOpen: false }, '')
+    const onPop = (e) => {
+      const st = e.state || { view: { name: 'home' }, profileOpen: false }
+      fromPop.current = true
+      setDir('back')
+      setView(st.view || { name: 'home' })
+      setProfileOpen(!!st.profileOpen)
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  useEffect(() => {
+    if (fromPop.current) {
+      fromPop.current = false
+      return
+    }
+    if (!didInit.current) {
+      didInit.current = true
+      return
+    }
+    window.history.pushState({ view, profileOpen }, '')
+  }, [view, profileOpen])
 
   const upsertSet = (set) =>
     setSets((prev) => {
