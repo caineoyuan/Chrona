@@ -131,16 +131,19 @@ function ManualCircle({ step, status, onComplete, onReopen }) {
   )
 }
 
-function StepNotes({ notes }) {
+function StepNotes({ notes, active }) {
   const { url, text, youtubeId } = parseNotes(notes)
   const [open, setOpen] = useState(false)
   if (!url && !text) return null
+  const ytSrc =
+    `https://www.youtube.com/embed/${youtubeId}` +
+    (active ? '?autoplay=1&mute=1' : '')
   return (
     <div className="step-notes">
       {youtubeId && (
         <div className="yt-embed">
           <iframe
-            src={`https://www.youtube.com/embed/${youtubeId}`}
+            src={ytSrc}
             title="YouTube video"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
@@ -683,7 +686,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
                 paused={phase === 'paused'}
               />
             )}
-            {step.notes && <StepNotes notes={step.notes} />}
+            {step.notes && <StepNotes notes={step.notes} active={stepStatus(i) === 'active'} />}
           </div>
         ))}
 
