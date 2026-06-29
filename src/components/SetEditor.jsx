@@ -378,25 +378,6 @@ export default function SetEditor({ set, onSave, onDelete, onCancel }) {
       <section className="editor-section">
         <label className="toggle-row">
           <span>
-            <strong>Keep track of streaks</strong>
-            <br />
-            <span className="muted small">
-              Count consecutive scheduled days you complete this set.
-            </span>
-          </span>
-          <input
-            type="checkbox"
-            className="switch-input"
-            checked={draft.trackStreak}
-            onChange={(e) => update({ trackStreak: e.target.checked })}
-          />
-          <span className="switch" aria-hidden="true" />
-        </label>
-      </section>
-
-      <section className="editor-section">
-        <label className="toggle-row">
-          <span>
             <strong>Loop continuously</strong>
             <br />
             <span className="muted small">
@@ -414,7 +395,64 @@ export default function SetEditor({ set, onSave, onDelete, onCancel }) {
       </section>
 
       <section className="editor-section">
-        <h3 className="section-title">Schedule</h3>
+        <label className="toggle-row">
+          <span>
+            <strong>Keep track of streaks</strong>
+            <br />
+            <span className="muted small">
+              Count consecutive scheduled days you complete this set.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            className="switch-input"
+            checked={draft.trackStreak}
+            onChange={(e) => update({ trackStreak: e.target.checked })}
+          />
+          <span className="switch" aria-hidden="true" />
+        </label>
+      </section>
+
+      {draft.trackStreak && (
+      <section className="editor-section">
+        <h3 className="section-title">Schedule streaks</h3>
+        <div className="freq-picker">
+          <button
+            className={`freq-btn ${sc.mode !== 'weekly' ? 'active' : ''}`}
+            onClick={() => updateSchedule({ mode: 'days' })}
+          >
+            Scheduled days
+          </button>
+          <button
+            className={`freq-btn ${sc.mode === 'weekly' ? 'active' : ''}`}
+            onClick={() => updateSchedule({ mode: 'weekly' })}
+          >
+            X times a week
+          </button>
+        </div>
+
+        {sc.mode === 'weekly' ? (
+          <>
+            <p className="muted small">
+              Do this set a target number of times each week. Counts reset
+              Sunday; the week is judged Saturday 11:59 PM.
+            </p>
+            <div className="month-grid">
+              {Array.from({ length: 7 }, (_, i) => i + 1).map((n) => (
+                <button
+                  key={n}
+                  className={`circle-btn dom-circle ${
+                    (sc.timesPerWeek || 3) === n ? 'active' : ''
+                  }`}
+                  onClick={() => updateSchedule({ timesPerWeek: n })}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
         <div className="freq-picker">
           {FREQ_OPTIONS.map((opt) => {
             const active = opt.everyDay
@@ -491,7 +529,10 @@ export default function SetEditor({ set, onSave, onDelete, onCancel }) {
             Repeats {scheduleLabel({ ...draft }).toLowerCase()}.
           </p>
         )}
+          </>
+        )}
       </section>
+      )}
 
       <section className="editor-section save-delete-row">
         <button

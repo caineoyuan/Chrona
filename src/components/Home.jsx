@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import Icon from './Icon.jsx'
 import {
   totalSeconds,
@@ -9,6 +9,10 @@ import {
   dateKey,
   scheduleLabel,
   usedFreezes,
+  normalizeSchedule,
+  weeklyTarget,
+  weeklyCount,
+  ringColor,
   WEEKDAYS,
 } from '../lib.js'
 
@@ -35,6 +39,34 @@ function FireStrip({ set }) {
   )
 }
 
+function WeeklyRing({ set }) {
+  const target = weeklyTarget(set)
+  const done = weeklyCount(set)
+  const p = Math.min(1, done / target)
+  const R = 26
+  const C = 2 * Math.PI * R
+  return (
+    <div className="weekly-ring" title={`${done} of ${target} this week`}>
+      <svg viewBox="0 0 64 64">
+        <circle className="ring-track" cx="32" cy="32" r={R} strokeWidth="6" fill="none" />
+        <circle
+          cx="32"
+          cy="32"
+          r={R}
+          strokeWidth="6"
+          fill="none"
+          stroke={ringColor(p)}
+          strokeLinecap="round"
+          strokeDasharray={C}
+          strokeDashoffset={C * (1 - p)}
+          transform="rotate(-90 32 32)"
+        />
+      </svg>
+      <span className="weekly-ring-num">{done}/{target}</span>
+    </div>
+  )
+}
+
 function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate }) {
   const total = totalSeconds(set)
   const streak = computeStreak(set)
@@ -43,70 +75,85 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate }) {
   const doneToday = Boolean(set.completions?.[todayK])
   const frozenToday = Boolean(set.freezes?.[todayK])
   const flameLit = !(dueToday && !doneToday && !frozenToday)
+  const weekly = normalizeSchedule(set).mode === 'weekly'
+
+  const [dx, setDx] = useState(0)
+  const start = useRef(null)
+  const base = useRef(0)
+  const moved = useRef(false)
+  const REVEAL = 132
+  const onStart = (x) => {
+    start.current = x
+    base.current = dx
+    moved.current = false
+  }
+  const onMove = (x) => {
+    if (start.current == null) return
+    if (Math.abs(x - start.current) > 6) moved.current = true
+    setDx(Math.max(-REVEAL, Math.min(0, base.current + (x - start.current))))
+  }
+  const onEnd = () => {
+    setDx((d) => (d < -REVEAL / 2 ? -REVEAL : 0))
+    start.current = null
+  }
+  const open = () => {
+    if (moved.current) return
+    if (dx !== 0) { setDx(0); return }
+    onOpen()
+  }
+
   return (
-    <div className="card" onClick={onOpen}>
-      <div className="card-head">
-        <h2 className="card-title">{set.name}</h2>
-        <div className="card-head-actions">
-          <button
-            className="icon-btn"
-            title="Edit set"
-            onClick={(e) => {
-              e.stopPropagation()
-              onEdit()
-            }}
-          >
-            <Icon name="edit" size={20} />
-          </button>
-          <button
-            className="icon-btn"
-            title="Duplicate set"
-            onClick={(e) => {
-              e.stopPropagation()
-              onDuplicate()
-            }}
-          >
-            <Icon name="copy" size={20} />
-          </button>
-          <button
-            className="icon-btn danger"
-            title="Delete set"
-            onClick={(e) => {
-              e.stopPropagation()
-              onDelete()
-            }}
-          >
-            <Icon name="trash" size={20} />
-          </button>
-        </div>
+    <div className="card-wrap">
+      <div className="card-actions">
+        <button className="swipe-act" title="Edit" onClick={() => { setDx(0); onEdit() }}>
+          <Icon name="edit" size={20} />
+        </button>
+        <button className="swipe-act" title="Duplicate" onClick={() => { setDx(0); onDuplicate() }}>
+          <Icon name="copy" size={20} />
+        </button>
+        <button className="swipe-act danger" title="Delete" onClick={() => { setDx(0); onDelete() }}>
+          <Icon name="trash" size={20} />
+        </button>
       </div>
-
-      {set.trackStreak && (
-        <div className="card-streak">
-          <div className="streak-count">
-            <Icon
-              name="fire-element"
-              size={18}
-              className={`streak-flame ${flameLit ? '' : 'fire-missed'}`}
-            />
-            <span className="streak-num">{streak}</span>
-            <span className="streak-label">day streak</span>
-          </div>
-          <FireStrip set={set} />
+      <div
+        className="card"
+        style={{ transform: `translateX(${dx}px)` }}
+        onClick={open}
+        onTouchStart={(e) => onStart(e.touches[0].clientX)}
+        onTouchMove={(e) => onMove(e.touches[0].clientX)}
+        onTouchEnd={onEnd}
+      >
+        <div className="card-head">
+          <h2 className="card-title">{set.name}</h2>
         </div>
-      )}
 
-      <div className="card-meta">
-        <span className="meta-tag">{formatDuration(total)}</span>
-        {scheduleLabel(set) !== 'Every day' && (
-          <span className="meta-tag">{scheduleLabel(set)}</span>
-        )}
-        <span className="meta-tag">{set.steps.length} steps</span>
         {set.trackStreak && (
-          <span className="meta-tag">
-            {usedFreezes(set)} {usedFreezes(set) === 1 ? 'freeze' : 'freezes'} used
-          </span>
+          <div className="card-streak">
+            <div className="streak-count">
+              <Icon
+                name="fire-element"
+                size={18}
+                className={`streak-flame ${flameLit ? '' : 'fire-missed'}`}
+              />
+              <span className="streak-num">{streak}</span>
+              <span className="streak-label">{weekly ? 'week streak' : 'day streak'}</span>
+            </div>
+            {weekly ? <WeeklyRing set={set} /> : <FireStrip set={set} />}
+          </div>
         )}
+
+        <div className="card-meta">
+          <span className="meta-tag">{formatDuration(total)}</span>
+          {scheduleLabel(set) !== 'Every day' && (
+            <span className="meta-tag">{scheduleLabel(set)}</span>
+          )}
+          <span className="meta-tag">{set.steps.length} steps</span>
+          {set.trackStreak && (
+            <span className="meta-tag">
+              {usedFreezes(set)} {usedFreezes(set) === 1 ? 'freeze' : 'freezes'} used
+            </span>
+          )}
+        </div>
       </div>
     </div>
   )

@@ -137,8 +137,59 @@ button {
   display: grid;
   gap: 16px;
 }
+.card-wrap {
+  position: relative;
+}
+.card-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 4px;
+  width: 124px;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  background: var(--accent);
+  border-radius: 2px;
+}
+.swipe-act {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  cursor: pointer;
+}
+.swipe-act.danger {
+  color: #ffd9d2;
+}
+.weekly-ring {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+}
+.weekly-ring svg {
+  width: 64px;
+  height: 64px;
+}
+.weekly-ring-num {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 15px;
+}
 .card {
   position: relative;
+  z-index: 1;
   background: linear-gradient(160deg, var(--card), var(--card-2));
   border: 1px solid var(--line);
   border-radius: 2px;

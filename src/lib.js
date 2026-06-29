@@ -49,7 +49,7 @@ export function normalizeSchedule(set) {
   const anchorDay = parseKey(anchorKey).getDate()
   const s = set?.schedule
   if (Array.isArray(s)) {
-    return { freq: 'weekly', interval: 1, days: s, dayOfMonth: anchorDay, anchor: anchorKey }
+    return { freq: 'weekly', interval: 1, days: s, dayOfMonth: anchorDay, anchor: anchorKey, mode: 'days', timesPerWeek: 3 }
   }
   if (s && typeof s === 'object') {
     return {
@@ -58,13 +58,16 @@ export function normalizeSchedule(set) {
       days: Array.isArray(s.days) ? s.days : [],
       dayOfMonth: s.dayOfMonth || anchorDay,
       anchor: s.anchor || anchorKey,
+      mode: s.mode === 'weekly' ? 'weekly' : 'days',
+      timesPerWeek: Math.max(1, s.timesPerWeek || 3),
     }
   }
-  return { freq: 'weekly', interval: 1, days: [], dayOfMonth: anchorDay, anchor: anchorKey }
+  return { freq: 'weekly', interval: 1, days: [], dayOfMonth: anchorDay, anchor: anchorKey, mode: 'days', timesPerWeek: 3 }
 }
 
 export function isScheduled(set, date) {
   const sc = normalizeSchedule(set)
+  if (sc.mode === 'weekly') return true
   const d = startOfDay(date)
   const anchor = parseKey(sc.anchor)
 
@@ -154,6 +157,7 @@ export function lastScheduledDates(set, count = 7) {
 // not yet done it is treated as "in progress" and does not break the streak.
 export function computeStreak(set) {
   if (!set.trackStreak) return 0
+  if (normalizeSchedule(set).mode === 'weekly') return computeWeeklyStreak(set)
   let d = recentScheduled(set, new Date())
   if (!isDone(set, d)) {
     // most recent occurrence (possibly today) not done yet -> start from prior
@@ -167,6 +171,55 @@ export function computeStreak(set) {
     } else break
   }
   return streak
+}
+
+// ── Weekly-target mode ─────────────────────────────────────────────
+// Goal: complete the set N times within a week (Sun..Sat). Weeks are
+// evaluated at Saturday 23:59. Any day counts; a day counts at most once.
+
+export const weeklyTarget = (set) => normalizeSchedule(set).timesPerWeek
+
+// Distinct completed/frozen days within the week containing `date`.
+export function weeklyCount(set, date = new Date()) {
+  const ws = startOfWeek(date)
+  const we = addDays(ws, 7)
+  const keys = new Set([
+    ...Object.keys(set.completions || {}),
+    ...Object.keys(set.freezes || {}),
+  ])
+  let n = 0
+  for (const k of keys) {
+    const d = parseKey(k)
+    if (d >= ws && d < we) n++
+  }
+  return n
+}
+
+// Consecutive *past* weeks that met the target, plus the current week if it
+// already met. Current week not-yet-met is "in progress" (doesn't break).
+export function computeWeeklyStreak(set) {
+  if (!set.trackStreak) return 0
+  const target = weeklyTarget(set)
+  let weekStart = startOfWeek(new Date())
+  let streak = 0
+  if (weeklyCount(set, weekStart) >= target) streak++
+  weekStart = addDays(weekStart, -7)
+  for (let i = 0; i < 520; i++) {
+    if (weeklyCount(set, weekStart) >= target) {
+      streak++
+      weekStart = addDays(weekStart, -7)
+    } else break
+  }
+  return streak
+}
+
+// Step-wise red→orange→yellow→green ring color (matches timer increments).
+export function ringColor(p) {
+  if (p >= 1) return '#1DB954'
+  if (p < 0.25) return '#ef4444'
+  if (p < 0.5) return '#f97316'
+  if (p < 0.75) return '#facc15'
+  return '#9ACD32'
 }
 
 // 1 freeze earned per 2 weeks since creation.
@@ -209,6 +262,10 @@ const ordinal = (n) => {
 
 export function scheduleLabel(set) {
   const sc = normalizeSchedule(set)
+  if (sc.mode === 'weekly') {
+    const n = sc.timesPerWeek
+    return `${n}× per week`
+  }
   const anchor = parseKey(sc.anchor)
 
   if (sc.freq === 'monthly') {
