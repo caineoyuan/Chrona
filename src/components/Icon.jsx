@@ -106,7 +106,7 @@ const ICONS = {
       <rect x="3" y="19.5" width="14" height="2" rx="1" fill="#cbd5e1" />
     </>
   ),
-  plus: <path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7z" fill="#318CE7" />,
+  plus: <path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7z" fill="currentColor" />,
   up: <path d="M6 14.5l6-6 6 6" stroke="#cbd5e1" strokeWidth="2" fill="none" />,
   down: <path d="M6 9.5l6 6 6-6" stroke="#cbd5e1" strokeWidth="2" fill="none" />,
   checkmark: <path d="M5 12.5l4.5 4.5L19 7" stroke="#1DB954" strokeWidth="2.6" fill="none" />,

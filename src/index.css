@@ -683,6 +683,9 @@ input:focus {
   border-radius: 10px;
   font-size: 14px;
 }
+.add-btn .add-plus {
+  color: var(--accent);
+}
 .break-presets {
   display: flex;
   align-items: center;

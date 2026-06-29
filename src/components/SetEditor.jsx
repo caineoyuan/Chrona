@@ -190,21 +190,6 @@ function StepRow({
               />
             </>
           )}
-          {step.type === 'exercise' && (
-            <button
-              type="button"
-              className={`no-time-toggle ${step.noTime ? 'active' : ''}`}
-              onClick={toggleNoTime}
-              title={
-                step.noTime
-                  ? 'Has no timer — check off to complete. Click to add a timer.'
-                  : 'Make this a no-timer step you check off to complete'
-              }
-              aria-pressed={step.noTime}
-            >
-              Task
-            </button>
-          )}
         </div>
       </div>
       <div className="step-actions">
@@ -262,8 +247,12 @@ export default function SetEditor({ set, onSave, onDelete, onCancel }) {
   const updateSchedule = (patch) =>
     setDraft((d) => ({ ...d, schedule: { ...d.schedule, ...patch } }))
 
+  const isTask = set.kind === 'task'
+
   const addExercise = () => {
-    const step = { id: uid(), type: 'exercise', name: '', seconds: 60 }
+    const step = isTask
+      ? { id: uid(), type: 'exercise', name: '', seconds: 0, noTime: true }
+      : { id: uid(), type: 'exercise', name: '', seconds: 60 }
     update({ steps: [...draft.steps, step] })
     setFocusId(step.id)
   }
@@ -385,24 +374,28 @@ export default function SetEditor({ set, onSave, onDelete, onCancel }) {
 
         <div className="add-row">
           <button className="add-btn with-icon" onClick={addExercise}>
-            <Icon name="plus-math" size={15} /> Exercise
+            <Icon name="plus-math" size={15} className="add-plus" />{' '}
+            {isTask ? 'Task' : 'Timer'}
           </button>
-          <div className="break-presets">
-            <span className="muted small">Break:</span>
-            {BREAK_PRESETS.map((p) => (
-              <button
-                key={p}
-                className="circle-btn break-circle"
-                onClick={() => addBreak(p)}
-                title={`${p} second break`}
-              >
-                {p}s
-              </button>
-            ))}
-          </div>
+          {!isTask && (
+            <div className="break-presets">
+              <span className="muted small">Break:</span>
+              {BREAK_PRESETS.map((p) => (
+                <button
+                  key={p}
+                  className="circle-btn break-circle"
+                  onClick={() => addBreak(p)}
+                  title={`${p} second break`}
+                >
+                  {p}s
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
+      {!isTask && (
       <section className="editor-section">
         <label className="toggle-row">
           <span>
@@ -421,6 +414,7 @@ export default function SetEditor({ set, onSave, onDelete, onCancel }) {
           <span className="switch" aria-hidden="true" />
         </label>
       </section>
+      )}
 
       <section className="editor-section">
         <label className="toggle-row">
