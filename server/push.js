@@ -18,6 +18,9 @@ if (configured) {
 
 const router = Router()
 
+// pg returns JSONB columns already parsed; tolerate strings too.
+const asObj = (v) => (typeof v === 'string' ? JSON.parse(v) : v)
+
 router.get('/key', (_req, res) => res.json({ key: PUBLIC || '' }))
 
 router.post('/subscribe', requireAuth, async (req, res) => {
@@ -62,7 +65,7 @@ router.post('/test', requireAuth, async (req, res) => {
     })
     await Promise.all(
       subs.map((s) =>
-        webpush.sendNotification(JSON.parse(s.subscription), payload).catch(async (err) => {
+        webpush.sendNotification(asObj(s.subscription), payload).catch(async (err) => {
           if (err?.statusCode === 404 || err?.statusCode === 410)
             await query('DELETE FROM push_subscriptions WHERE endpoint = $1', [s.endpoint]).catch(() => {})
         }),
@@ -71,7 +74,7 @@ router.post('/test', requireAuth, async (req, res) => {
     res.json({ ok: true, sent: subs.length })
   } catch (err) {
     console.error('test push error', err)
-    res.status(500).json({ error: 'Could not send test.' })
+    res.status(500).json({ error: `Could not send test: ${err?.statusCode || ''} ${err?.body || err?.message || ''}`.trim() })
   }
 })
 
@@ -104,7 +107,7 @@ async function send(sub, set, when) {
     : `Last chance! Do your “${set.name}” before midnight!`
   try {
     await webpush.sendNotification(
-      JSON.parse(sub.subscription),
+      asObj(sub.subscription),
       JSON.stringify({ title: 'Chrona', body, tag: `${set.id}-${dateKey(new Date())}-${when}` }),
     )
   } catch (err) {
