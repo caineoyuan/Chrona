@@ -696,7 +696,7 @@ input:focus {
   font-family: var(--sans);
   font-size: 13px;
   padding: 8px 10px;
-  resize: vertical;
+  resize: none;
 }
 .step-notes {
   display: flex;
