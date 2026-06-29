@@ -136,6 +136,7 @@ function ManualCircle({ step, status, onComplete }) {
 
 export default function RunView({ set, onUpdate, onEdit, onBack }) {
   const steps = set.steps
+  const hasTimers = steps.some((s) => !s.noTime)
   const [phase, setPhase] = useState('idle') // idle | running | paused | done
   const [index, setIndex] = useState(-1)
   const [progress, setProgress] = useState(0)
@@ -161,6 +162,17 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     },
     []
   )
+
+  // A set with no timed steps needs no Start button — arm the first step so it
+  // can be tapped to complete right away.
+  useEffect(() => {
+    if (!hasTimers && steps.length && phase === 'idle') {
+      iRef.current = 0
+      setIndex(0)
+      setPhase('manual')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasTimers, steps.length, phase])
 
   const markCompleteToday = () => {
     // Completing the set means today's freeze (if any) wasn't needed — release it.
@@ -473,9 +485,11 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
           )}
         </div>
 
-        {/* Start node with an overall-progress ring (stays fixed) */}
-        <div className="timeline start-timeline">
-          <div className="timeline-node">
+        {/* Start node with an overall-progress ring (stays fixed). Hidden for
+            sets with only no-time steps — those are tapped to complete. */}
+        {hasTimers && (
+          <div className="timeline start-timeline">
+            <div className="timeline-node">
             <div className="start-wrap">
               <svg viewBox="0 0 120 120" className="overall-ring">
                 <circle className="ring-track" cx="60" cy="60" r={OVERALL_R} />
@@ -517,6 +531,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
             </div>
           </div>
         </div>
+        )}
       </div>
 
       <div className="timeline run-scroll">
