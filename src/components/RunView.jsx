@@ -133,6 +133,22 @@ function ManualCircle({ step, status, onComplete, onReopen }) {
 export default function RunView({ set, onUpdate, onEdit, onBack }) {
   const steps = set.steps
   const hasTimers = steps.some((s) => !s.noTime)
+  const swipe = useRef(null)
+  const onNavStart = (e) => {
+    const t = e.touches[0]
+    swipe.current = { x: t.clientX, y: t.clientY }
+  }
+  const onNavEnd = (e) => {
+    if (!swipe.current) return
+    const t = e.changedTouches[0]
+    const dx = t.clientX - swipe.current.x
+    const dy = t.clientY - swipe.current.y
+    swipe.current = null
+    if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.6) {
+      if (dx > 0) onBack()
+      else onEdit()
+    }
+  }
   // Current cycle = most recent scheduled occurrence; stays "done" until the
   // next due date arrives or the user unchecks complete.
   const cycleKey = dateKey(lastScheduledDates(set, 1)[0])
@@ -477,7 +493,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
   }
 
   return (
-    <div className="run">
+    <div className="run" onTouchStart={onNavStart} onTouchEnd={onNavEnd}>
       <div className="run-fixed">
         <div className="run-head">
           <button className="icon-btn" onClick={onBack} title="Back" aria-label="Back">
