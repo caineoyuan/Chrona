@@ -230,6 +230,11 @@ export default function SetEditor({ set, onSave, onDelete, onCancel }) {
   }))
   const [focusId, setFocusId] = useState(null)
   const [showHelp, setShowHelp] = useState(false)
+  const nameRef = useRef(null)
+  useEffect(() => {
+    if (!set.name) nameRef.current?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const update = (patch) => setDraft((d) => ({ ...d, ...patch }))
   const updateSchedule = (patch) =>
@@ -301,9 +306,10 @@ export default function SetEditor({ set, onSave, onDelete, onCancel }) {
       </div>
 
       <input
+        ref={nameRef}
         className="set-name-input"
         value={draft.name}
-        placeholder="Set name"
+        placeholder="Set Name"
         onChange={(e) => update({ name: e.target.value })}
       />
       <p className="editor-total">Total time: {formatDuration(total)}</p>
