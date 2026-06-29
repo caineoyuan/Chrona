@@ -146,6 +146,7 @@ function StepNotes({ notes, active, paused, done }) {
     else cmd('pauseVideo')
   }, [active, paused, youtubeId])
   if (!url && !text) return null
+  if (done && youtubeId) return null
   const ytSrc = `https://www.youtube.com/embed/${youtubeId}?enablejsapi=1&mute=1`
   return (
     <div className="step-notes">
