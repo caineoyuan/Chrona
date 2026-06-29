@@ -25,8 +25,8 @@ function show(set, when) {
   const title = 'Chrona'
   const body =
     when === 'morning'
-      ? `“${set.name}” is due today — keep your streak going!`
-      : `Last chance: complete “${set.name}” before midnight.`
+      ? `Make sure to do your “${set.name}” today to keep your streak going!`
+      : `Last chance! Do your “${set.name}” before midnight!`
   try {
     new Notification(title, { body, tag: `${set.id}-${todayKey()}-${when}` })
   } catch {

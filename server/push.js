@@ -73,8 +73,8 @@ function dueAndPending(set, localDate) {
 
 async function send(sub, set, when) {
   const body = when === 'morning'
-    ? `“${set.name}” is due today — keep your streak going!`
-    : `Last chance: complete “${set.name}” before midnight.`
+    ? `Make sure to do your “${set.name}” today to keep your streak going!`
+    : `Last chance! Do your “${set.name}” before midnight!`
   try {
     await webpush.sendNotification(
       JSON.parse(sub.subscription),
