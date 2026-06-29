@@ -231,6 +231,28 @@ export default function SetEditor({ set, onSave, onDelete, onCancel }) {
   const [focusId, setFocusId] = useState(null)
   const [showHelp, setShowHelp] = useState(false)
   const nameRef = useRef(null)
+  const [dragX, setDragX] = useState(0)
+  const swipe = useRef(null)
+  const onSwipeStart = (e) => {
+    swipe.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, ok: false }
+  }
+  const onSwipeMove = (e) => {
+    if (!swipe.current) return
+    const dx = e.touches[0].clientX - swipe.current.x
+    const dy = e.touches[0].clientY - swipe.current.y
+    if (!swipe.current.ok) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+      swipe.current.ok = Math.abs(dx) > Math.abs(dy) // horizontal intent
+      if (!swipe.current.ok) { swipe.current = null; return }
+    }
+    setDragX(Math.max(0, dx))
+  }
+  const onSwipeEnd = () => {
+    if (!swipe.current) return
+    swipe.current = null
+    if (dragX > window.innerWidth * 0.4) onCancel()
+    else setDragX(0)
+  }
   useEffect(() => {
     if (!set.name) nameRef.current?.focus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -285,7 +307,13 @@ export default function SetEditor({ set, onSave, onDelete, onCancel }) {
   const total = totalSeconds(draft)
 
   return (
-    <div className="editor">
+    <div
+      className="editor"
+      style={{ transform: dragX ? `translateX(${dragX}px)` : undefined, transition: dragX ? 'none' : 'transform 0.2s ease' }}
+      onTouchStart={onSwipeStart}
+      onTouchMove={onSwipeMove}
+      onTouchEnd={onSwipeEnd}
+    >
       <div className="editor-head">
         <button
           className="icon-btn"

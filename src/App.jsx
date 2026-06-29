@@ -162,7 +162,12 @@ function Workspace() {
               deleteSet(current.id)
               go({ name: 'home' }, 'back')
             }}
-            onCancel={() => go({ name: 'home' }, 'back')}
+            onCancel={() =>
+              go(
+                view.from === 'run' ? { name: 'run', id: current.id } : { name: 'home' },
+                'back',
+              )
+            }
           />
         )}
 
@@ -170,7 +175,7 @@ function Workspace() {
           <RunView
             set={current}
             onUpdate={upsertSet}
-            onEdit={() => go({ name: 'edit', id: current.id }, 'forward')}
+            onEdit={() => go({ name: 'edit', id: current.id, from: 'run' }, 'forward')}
             onBack={() => go({ name: 'home' }, 'back')}
           />
         )}
