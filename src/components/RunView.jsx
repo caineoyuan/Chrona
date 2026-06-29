@@ -103,31 +103,24 @@ function TimerCircle({ step, status, progress, onTap, paused }) {
 }
 
 // A no-time step: a circular button the user clicks to mark complete.
-function ManualCircle({ step, status, onComplete }) {
+function ManualCircle({ step, status, onComplete, onReopen }) {
   const done = status === 'done'
   const active = status === 'active'
   const name = step.name || 'Exercise'
+  const onClick = active ? onComplete : done ? onReopen : undefined
   return (
     <div className={`timer-circle manual ${status}`}>
       <button
         type="button"
         className="manual-ring"
-        onClick={active ? onComplete : undefined}
-        disabled={!active}
-        title={active ? 'Tap to complete' : name}
-        aria-label={active ? `Complete ${name}` : name}
-      >
-        <span className="manual-check">
-          <Icon name="checkmark" size={done ? 30 : 64} />
-        </span>
-      </button>
+        onClick={onClick}
+        disabled={!onClick}
+        title={done ? 'Completed — tap to undo' : active ? 'Tap to complete' : name}
+        aria-label={done ? `Reopen ${name}` : active ? `Complete ${name}` : name}
+      />
       <div className="ring-center">
         <span className="ring-name">{name}</span>
-        {!done && (
-          <span className="ring-time-faded">
-            {active ? 'Tap to complete' : 'No time'}
-          </span>
-        )}
+        {!done && <span className="ring-time-faded">Tap to complete</span>}
       </div>
       {done && <span className="ring-side-name">{name}</span>}
     </div>
@@ -273,6 +266,23 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
       return
     }
     startAt(next)
+  }
+
+  // Re-arm a previously completed no-time step so it can be tapped again.
+  const reopenStep = (i) => {
+    if (i < 0 || i >= steps.length) return
+    cancelAnimationFrame(rafRef.current)
+    iRef.current = i
+    setIndex(i)
+    setProgress(0)
+    setRemaining(0)
+    setPhase('manual')
+    // Re-arming any step means the full pass isn't finished anymore.
+    if (set.completions?.[todayKey()]) {
+      const completions = { ...set.completions }
+      delete completions[todayKey()]
+      onUpdate({ ...set, completions })
+    }
   }
 
   // (re)start the animation loop whenever we enter running phase
@@ -550,6 +560,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
                 step={step}
                 status={stepStatus(i)}
                 onComplete={manualComplete}
+                onReopen={() => reopenStep(i)}
               />
             ) : (
               <TimerCircle

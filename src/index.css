@@ -980,18 +980,8 @@ input:focus {
 }
 .timer-circle.manual.done .manual-ring {
   border-color: var(--accent-2);
-  background: var(--accent-2);
-}
-.manual-check {
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  display: inline-flex;
-}
-.manual-check .gi path {
-  stroke: #fff;
-}
-.timer-circle.manual.done .manual-check {
-  opacity: 1;
+  background: transparent;
+  cursor: pointer;
 }
 .ring-side-name {
   position: absolute;
