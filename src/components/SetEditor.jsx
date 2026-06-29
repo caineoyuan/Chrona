@@ -308,7 +308,7 @@ export default function SetEditor({ set, onSave, onDelete, onCancel }) {
 
   return (
     <div
-      className="editor"
+      className={`editor${set.kind === 'task' ? ' task' : ''}`}
       style={{ transform: dragX ? `translateX(${dragX}px)` : undefined, transition: dragX ? 'none' : 'transform 0.2s ease' }}
       onTouchStart={onSwipeStart}
       onTouchMove={onSwipeMove}

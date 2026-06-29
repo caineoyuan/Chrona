@@ -103,7 +103,7 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate }) {
   }
 
   return (
-    <div className="card-wrap">
+    <div className={`card-wrap${set.kind === 'task' ? ' task' : ''}`}>
       <div className="card-actions">
         <button className="swipe-act" title="Edit" onClick={() => { setDx(0); onEdit() }}>
           <Icon name="edit" size={20} />
@@ -161,6 +161,7 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate }) {
 
 export default function Home({ sets, onAdd, onOpen, onEdit, onDelete, onDuplicate }) {
   const [confirming, setConfirming] = useState(null) // set pending deletion
+  const [choosing, setChoosing] = useState(false)
 
   return (
     <div className="home">
@@ -171,7 +172,7 @@ export default function Home({ sets, onAdd, onOpen, onEdit, onDelete, onDuplicat
         {sets.length > 0 && (
           <button
             className="add-circle-btn"
-            onClick={onAdd}
+            onClick={() => setChoosing(true)}
             title="New set"
             aria-label="New set"
           >
@@ -186,7 +187,7 @@ export default function Home({ sets, onAdd, onOpen, onEdit, onDelete, onDuplicat
           <p>No sets yet.</p>
           <button
             className="add-circle-btn"
-            onClick={onAdd}
+            onClick={() => setChoosing(true)}
             title="Create your first set"
             aria-label="Create your first set"
           >
@@ -205,6 +206,31 @@ export default function Home({ sets, onAdd, onOpen, onEdit, onDelete, onDuplicat
               onDuplicate={() => onDuplicate(s.id)}
             />
           ))}
+        </div>
+      )}
+
+      {choosing && (
+        <div className="modal-overlay" onClick={() => setChoosing(false)}>
+          <div className="modal chooser-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modal-title">New set</h3>
+            <p className="modal-body">Pick what kind of set you’d like to create.</p>
+            <div className="chooser-row">
+              <button
+                className="chooser-btn timer"
+                onClick={() => { setChoosing(false); onAdd('timer') }}
+              >
+                <Icon name="timer-2" size={40} />
+                <span>Timer</span>
+              </button>
+              <button
+                className="chooser-btn task"
+                onClick={() => { setChoosing(false); onAdd('task') }}
+              >
+                <Icon name="task" size={40} />
+                <span>Task</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

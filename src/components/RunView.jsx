@@ -503,7 +503,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
 
   return (
     <div
-      className="run"
+      className={`run${set.kind === 'task' ? ' task' : ''}`}
       style={{ transform: dragX ? `translateX(${dragX}px)` : undefined, transition: dragX ? 'none' : 'transform 0.2s ease' }}
       onTouchStart={onNavStart}
       onTouchMove={onNavMove}

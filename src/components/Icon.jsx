@@ -3,6 +3,25 @@
 
 const ICONS = {
   timer: { img: '/timer-shutter.png' },
+  'timer-2': {
+    vb: '0 0 24 24',
+    el: (
+      <>
+        <circle cx="12" cy="13" r="8" stroke="currentColor" strokeWidth="2" fill="none" />
+        <path d="M12 13V9M9 2h6M19 5l1.5 1.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" />
+      </>
+    ),
+  },
+  task: {
+    vb: '0 0 24 24',
+    el: (
+      <>
+        <rect x="5" y="4" width="14" height="17" rx="2" stroke="currentColor" strokeWidth="2" fill="none" />
+        <path d="M9 3.5h6v2H9z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" fill="none" />
+        <path d="M8.5 12l2.2 2.2L15.5 9.4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      </>
+    ),
+  },
   fire: {
     vb: '-33 0 255 255',
     el: (

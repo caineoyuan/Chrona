@@ -139,8 +139,8 @@ function Workspace() {
           <Home
             sets={sets}
             loading={!loaded}
-            onAdd={() => {
-              const s = newSet()
+            onAdd={(kind) => {
+              const s = newSet(kind)
               upsertSet(s)
               go({ name: 'edit', id: s.id }, 'forward')
             }}

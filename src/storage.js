@@ -51,11 +51,17 @@ export function useSets() {
 export const uid = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 
-export function newSet() {
+export function newSet(kind = 'timer') {
+  const task = kind === 'task'
   return {
     id: uid(),
     name: '',
-    steps: [{ id: uid(), type: 'exercise', name: '', seconds: 60 }],
+    kind,
+    steps: [
+      task
+        ? { id: uid(), type: 'exercise', name: '', seconds: 0, noTime: true }
+        : { id: uid(), type: 'exercise', name: '', seconds: 60 },
+    ],
     schedule: [], // weekday numbers 0(Sun)-6(Sat); empty = every day
     trackStreak: true,
     loop: false,
