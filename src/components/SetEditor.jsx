@@ -153,7 +153,7 @@ function StepRow({
         )}
         <div className="time-fields">
           {step.noTime ? (
-            <span className="no-time-label">No time</span>
+            <span className="no-time-label" />
           ) : (
             <>
               <input
@@ -202,7 +202,7 @@ function StepRow({
               }
               aria-pressed={step.noTime}
             >
-              No&nbsp;time
+              Task
             </button>
           )}
         </div>
