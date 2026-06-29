@@ -124,7 +124,7 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate }) {
         onTouchEnd={onEnd}
       >
         <div className="card-head">
-          <h2 className="card-title">{set.name}</h2>
+          <h2 className="card-title">{set.name || 'Untitled'}</h2>
         </div>
 
         {set.trackStreak && (

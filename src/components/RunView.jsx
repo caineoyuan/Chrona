@@ -519,7 +519,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
           </button>
         </div>
 
-        <h1 className="run-title">{set.name}</h1>
+        <h1 className="run-title">{set.name || 'Untitled'}</h1>
         <div className="run-meta">
           <span className="meta-tag">{formatDuration(totalSeconds(set))}</span>
           {set.trackStreak && (
