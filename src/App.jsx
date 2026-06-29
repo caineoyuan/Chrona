@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSets, newSet, uid } from './storage.js'
 import { todayKey } from './lib.js'
 import { useReminders } from './notify.js'
+import { subscribePush } from './push.js'
 import { useAuth } from './auth.jsx'
 import Icon from './components/Icon.jsx'
 import Home from './components/Home.jsx'
@@ -61,6 +62,13 @@ function Workspace() {
   // values — streaks, today's completion, freezable date — never go stale.
   useDayKey()
   useReminders(sets)
+  // If any set wants reminders and permission is already granted, refresh the
+  // device's push subscription so background notifications keep working.
+  useEffect(() => {
+    if (loaded && sets.some((s) => s.notify !== false) && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      subscribePush().catch(() => {})
+    }
+  }, [loaded, sets])
   const [profileOpen, setProfileOpen] = useState(false)
   // view: { name: 'home' } | { name: 'edit', id } | { name: 'run', id }
   const [view, setView] = useState({ name: 'home' })

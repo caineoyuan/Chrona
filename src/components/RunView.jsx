@@ -12,6 +12,7 @@ import {
   lastScheduledDates,
 } from '../lib.js'
 import { ensurePermission } from '../notify.js'
+import { subscribePush } from '../push.js'
 
 const R = 46
 const C = 2 * Math.PI * R
@@ -431,7 +432,10 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
   const notifyEnabled = set.notify !== false
   const toggleNotify = async () => {
     const next = !notifyEnabled
-    if (next) await ensurePermission()
+    if (next) {
+      await ensurePermission()
+      subscribePush().catch(() => {})
+    }
     onUpdate({ ...set, notify: next })
   }
 

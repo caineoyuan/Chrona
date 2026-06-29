@@ -46,4 +46,13 @@ export async function initSchema() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      endpoint     TEXT PRIMARY KEY,
+      user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      subscription JSONB NOT NULL,
+      tz           TEXT NOT NULL DEFAULT 'UTC',
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `)
 }

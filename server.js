@@ -35,6 +35,7 @@ loadDotEnv(path.join(__dirname, '.env'))
 const { initSchema } = await import('./server/db.js')
 const { default: authRouter } = await import('./server/auth.js')
 const { default: setsRouter } = await import('./server/sets.js')
+const { default: pushRouter, startPushCron } = await import('./server/push.js')
 
 const app = express()
 app.use(express.json({ limit: '2mb' }))
@@ -42,6 +43,7 @@ app.use(cookieParser())
 
 app.use('/api/auth', authRouter)
 app.use('/api/sets', setsRouter)
+app.use('/api/push', pushRouter)
 app.get('/api/health', (_req, res) => res.json({ ok: true }))
 
 // Serve the built front-end (production) with SPA fallback.
@@ -59,6 +61,7 @@ initSchema()
   .then(() => {
     app.listen(port, () => {
       console.log(`Chrona running on port ${port}`)
+      startPushCron()
     })
   })
   .catch((err) => {
