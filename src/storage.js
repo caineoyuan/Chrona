@@ -59,6 +59,7 @@ export function newSet() {
     schedule: [], // weekday numbers 0(Sun)-6(Sat); empty = every day
     trackStreak: true,
     loop: false,
+    notify: true, // remind on due days (12 AM + 11:30 PM)
     completions: {}, // { 'YYYY-MM-DD': true }
     freezes: {}, // { 'YYYY-MM-DD': true }
     createdAt: new Date().toISOString(),

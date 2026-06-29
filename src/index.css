@@ -8,6 +8,7 @@
   --muted: #9a9a9a;
   --accent: #318CE7;
   --accent-2: #1DB954;
+  --gold: #FFC72C;
   --serif: 'DM Serif Text', Georgia, serif;
   --sans: 'DM Sans', system-ui, -apple-system, sans-serif;
 }
@@ -843,6 +844,31 @@ input:focus {
 .freeze-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+.notify-btn {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 199, 44, 0.45);
+  background: rgba(255, 199, 44, 0.14);
+  opacity: 0.65;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s, opacity 0.15s;
+}
+.notify-btn .gi path {
+  stroke: var(--gold);
+}
+.notify-btn.active {
+  background: var(--gold);
+  border-color: var(--gold);
+  opacity: 1;
+}
+.notify-btn.active .gi path {
+  stroke: #fff;
 }
 
 .timeline {

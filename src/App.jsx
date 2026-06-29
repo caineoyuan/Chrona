@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSets, newSet, uid } from './storage.js'
 import { todayKey } from './lib.js'
+import { useReminders } from './notify.js'
 import { useAuth } from './auth.jsx'
 import Icon from './components/Icon.jsx'
 import Home from './components/Home.jsx'
@@ -59,6 +60,7 @@ function Workspace() {
   // Re-render the whole tree at local midnight (and on refocus) so date-based
   // values — streaks, today's completion, freezable date — never go stale.
   useDayKey()
+  useReminders(sets)
   const [profileOpen, setProfileOpen] = useState(false)
   // view: { name: 'home' } | { name: 'edit', id } | { name: 'run', id }
   const [view, setView] = useState({ name: 'home' })

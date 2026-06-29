@@ -11,6 +11,7 @@ import {
   todayKey,
   lastScheduledDates,
 } from '../lib.js'
+import { ensurePermission } from '../notify.js'
 
 const R = 46
 const C = 2 * Math.PI * R
@@ -427,6 +428,13 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     onUpdate({ ...set, freezes: next })
   }
 
+  const notifyEnabled = set.notify !== false
+  const toggleNotify = async () => {
+    const next = !notifyEnabled
+    if (next) await ensurePermission()
+    onUpdate({ ...set, notify: next })
+  }
+
   const streak = computeStreak(set)
   const startActive =
     phase === 'running' ||
@@ -516,6 +524,14 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
               <Icon name="snowflake" size={24} />
             </button>
           )}
+          <button
+            className={`notify-btn ${notifyEnabled ? 'active' : ''}`}
+            onClick={toggleNotify}
+            title={notifyEnabled ? 'Reminders on — click to turn off' : 'Turn on due-day reminders'}
+            aria-label="Toggle reminders"
+          >
+            <Icon name={notifyEnabled ? 'bell' : 'bell-off'} size={24} />
+          </button>
         </div>
 
         {/* Start node with an overall-progress ring (stays fixed). Hidden for
