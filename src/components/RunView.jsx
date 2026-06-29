@@ -9,6 +9,7 @@ import {
   freezableDate,
   dateKey,
   todayKey,
+  lastScheduledDates,
 } from '../lib.js'
 
 const R = 46
@@ -130,7 +131,11 @@ function ManualCircle({ step, status, onComplete, onReopen }) {
 export default function RunView({ set, onUpdate, onEdit, onBack }) {
   const steps = set.steps
   const hasTimers = steps.some((s) => !s.noTime)
-  const doneTodayInit = Boolean(set.completions?.[todayKey()])
+  // Current cycle = most recent scheduled occurrence; stays "done" until the
+  // next due date arrives or the user unchecks complete.
+  const cycleKey = dateKey(lastScheduledDates(set, 1)[0])
+  const doneTodayInit =
+    Boolean(set.completions?.[todayKey()]) || Boolean(set.completions?.[cycleKey])
   // If already completed today, open with every ring shown as done.
   const [phase, setPhase] = useState(doneTodayInit ? 'done' : 'idle') // idle | running | paused | done
   const [index, setIndex] = useState(doneTodayInit ? steps.length : -1)
@@ -190,6 +195,22 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
       completions[k] = true
       // Completing releases an unused freeze on today's deadline.
       delete freezes[k]
+    }
+    // Keep the cycle's completion in sync so reopening reflects the new state.
+    if (cycleKey !== k) {
+      if (completions[k]) completions[cycleKey] = true
+      else delete completions[cycleKey]
+    }
+    const nowComplete = Boolean(completions[k] || completions[cycleKey])
+    // Reset the rings when unchecking; show all done when checking.
+    if (nowComplete) {
+      cancelAnimationFrame(rafRef.current)
+      iRef.current = steps.length
+      setIndex(steps.length)
+      setProgress(1)
+      setPhase('done')
+    } else {
+      handleReset()
     }
     onUpdate({ ...set, completions, freezes })
   }
