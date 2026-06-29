@@ -167,7 +167,7 @@ export default function Home({ sets, onAdd, onOpen, onEdit, onDelete, onDuplicat
     <div className="home">
       <div className="home-head">
         <div>
-          <h1 className="page-title">Your Sets</h1>
+          <h1 className="page-title">Your Streaks</h1>
         </div>
         {sets.length > 0 && (
           <button
