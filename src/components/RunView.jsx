@@ -131,18 +131,28 @@ function ManualCircle({ step, status, onComplete, onReopen }) {
   )
 }
 
-function StepNotes({ notes, active }) {
+function StepNotes({ notes, active, paused }) {
   const { url, text, youtubeId } = parseNotes(notes)
   const [open, setOpen] = useState(false)
+  const frame = useRef(null)
+  const cmd = (func) =>
+    frame.current?.contentWindow?.postMessage(
+      JSON.stringify({ event: 'command', func, args: [] }),
+      '*',
+    )
+  useEffect(() => {
+    if (!youtubeId) return
+    if (active && !paused) cmd('playVideo')
+    else cmd('pauseVideo')
+  }, [active, paused, youtubeId])
   if (!url && !text) return null
-  const ytSrc =
-    `https://www.youtube.com/embed/${youtubeId}` +
-    (active ? '?autoplay=1&mute=1' : '')
+  const ytSrc = `https://www.youtube.com/embed/${youtubeId}?enablejsapi=1&mute=1`
   return (
     <div className="step-notes">
       {youtubeId && (
         <div className="yt-embed">
           <iframe
+            ref={frame}
             src={ytSrc}
             title="YouTube video"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -151,9 +161,9 @@ function StepNotes({ notes, active }) {
         </div>
       )}
       <div className="step-notes-row">
-        {url && (
+        {url && !youtubeId && (
           <a className="notes-link-btn" href={url} target="_blank" rel="noopener noreferrer">
-            {youtubeId ? 'Open on YouTube' : 'Open link'}
+            Open link
           </a>
         )}
         {url && text && (
@@ -686,7 +696,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
                 paused={phase === 'paused'}
               />
             )}
-            {step.notes && <StepNotes notes={step.notes} active={stepStatus(i) === 'active'} />}
+            {step.notes && <StepNotes notes={step.notes} active={stepStatus(i) === 'active'} paused={phase === 'paused'} />}
           </div>
         ))}
 
