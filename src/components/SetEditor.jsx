@@ -382,9 +382,8 @@ export default function SetEditor({ set, onSave, onDelete, onCancel }) {
         </div>
 
         <div className="add-row">
-          <button className="add-btn with-icon" onClick={addExercise}>
-            <Icon name="plus-math" size={15} className="add-plus" />{' '}
-            {isTask ? 'Task' : 'Timer'}
+          <button className="add-btn add-circle" onClick={addExercise} title={isTask ? 'Add task' : 'Add timer'}>
+            <Icon name="plus-math" size={18} className="add-plus" />
           </button>
           {!isTask && (
             <div className="break-presets">
