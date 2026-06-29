@@ -162,8 +162,8 @@ function StepNotes({ notes, active, paused }) {
       )}
       <div className="step-notes-row">
         {url && !youtubeId && (
-          <a className="notes-link-btn" href={url} target="_blank" rel="noopener noreferrer">
-            Open link
+          <a className="notes-link-btn" href={url} target="_blank" rel="noopener noreferrer" title="Open link">
+            <Icon name="link" size={16} />
           </a>
         )}
         {url && text && (

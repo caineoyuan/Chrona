@@ -724,12 +724,15 @@ input:focus {
   gap: 8px;
 }
 .notes-link-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
   background: var(--accent);
   color: #fff;
   text-decoration: none;
-  font-size: 13px;
-  padding: 6px 14px;
-  border-radius: 999px;
 }
 .notes-toggle {
   display: flex;

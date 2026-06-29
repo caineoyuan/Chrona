@@ -12,6 +12,15 @@ const ICONS = {
       </>
     ),
   },
+  link: {
+    vb: '0 0 24 24',
+    el: (
+      <>
+        <path d="M9 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        <path d="M15 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      </>
+    ),
+  },
   task: {
     vb: '0 0 24 24',
     el: (
