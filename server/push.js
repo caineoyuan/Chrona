@@ -123,8 +123,8 @@ async function tick() {
   for (const sub of subs) {
     const now = tzNow(sub.tz)
     if (!now) continue
-    const when = now.hh === '00' && now.mm === '00' ? 'morning'
-      : now.hh === '23' && now.mm === '30' ? 'evening' : null
+    const when = now.hh === '17' && now.mm === '00' ? 'morning'
+      : now.hh === '22' && now.mm === '00' ? 'evening' : null
     if (!when) continue
     const localDate = new Date(now.y, now.m - 1, now.d, 12, 0, 0)
     const r = await query('SELECT sets FROM user_sets WHERE user_id = $1', [sub.user_id])
