@@ -228,17 +228,28 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
   const nodeRefs = useRef({})
   const tapTimer = useRef(null)
   const audioRef = useRef(null)
-  const soundPlayedRef = useRef(false)
+  const chimesFiredRef = useRef(0)
+  const CHIME_TIMES = [5.2, 4.2, 3.2, 2.2, 1.2]
 
   const playCountdown = () => {
-    if (soundPlayedRef.current) return
-    soundPlayedRef.current = true
     try {
       if (!audioRef.current) audioRef.current = new Audio('/countdown.mp3')
-      audioRef.current.currentTime = 0
-      audioRef.current.play().catch(() => {})
+      // Clone so overlapping plays don't wait for the previous one to finish.
+      const a = audioRef.current.cloneNode()
+      a.play().catch(() => {})
     } catch {
       /* ignore */
+    }
+  }
+
+  // Fire any countdown chimes whose threshold the remaining time has crossed.
+  const updateCountdown = (rem) => {
+    while (
+      chimesFiredRef.current < CHIME_TIMES.length &&
+      rem <= CHIME_TIMES[chimesFiredRef.current]
+    ) {
+      playCountdown()
+      chimesFiredRef.current += 1
     }
   }
 
@@ -346,7 +357,9 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     }
     const dur = step.seconds
     deadlineRef.current = performance.now() + dur * 1000
-    soundPlayedRef.current = false
+    // Skip chime thresholds that are already at/above the starting time so a
+    // short timer doesn't fire several chimes at once on start.
+    chimesFiredRef.current = CHIME_TIMES.filter((t) => t >= dur).length
     stopCountdown()
     setRemaining(dur)
     setProgress(0)
@@ -377,7 +390,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     }
     setRemaining(rem)
     setProgress(1 - rem / dur)
-    if (rem <= 5) playCountdown()
+    updateCountdown(rem)
     rafRef.current = requestAnimationFrame(tick)
   }
 
@@ -473,7 +486,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
   const handleReset = () => {
     cancelAnimationFrame(rafRef.current)
     stopCountdown()
-    soundPlayedRef.current = false
+    chimesFiredRef.current = CHIME_TIMES.length
     iRef.current = -1
     setIndex(-1)
     setProgress(0)
