@@ -204,45 +204,12 @@ button {
   justify-content: space-around;
   background: transparent;
 }
-.card-complete {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 4px;
-  width: 56px;
-  z-index: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.complete-circle {
-  position: relative;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-.complete-fill {
+.card-complete-fill {
   position: absolute;
   inset: 0;
-  border-radius: 50%;
-  background: #1db954;
-  transform: scale(0);
-  transform-origin: center;
-}
-.complete-circle.undo .complete-fill {
-  background: #ef4444;
-}
-.complete-circle svg {
-  position: relative;
-  z-index: 1;
-}
-.complete-circle svg path {
-  stroke: #fff;
+  z-index: 2;
+  border-radius: 2px;
+  pointer-events: none;
 }
 .swipe-act {
   width: 40px;

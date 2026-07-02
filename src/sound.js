@@ -37,7 +37,9 @@ export function unlockSounds() {
 
 export function playComplete() {
   try {
-    const a = get('complete')
+    // Clone a fresh element (like the countdown chime) so playback isn't
+    // affected by the shared element's state/unlock priming.
+    const a = get('complete').cloneNode()
     a.currentTime = 0
     a.play().catch(() => {})
   } catch {

@@ -127,12 +127,6 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate, onComplete }) {
           <Icon name="trash" size={20} />
         </button>
       </div>
-      <div className="card-complete" style={{ opacity: dx > 0 ? 1 : 0 }}>
-        <div className={`complete-circle${doneToday ? ' undo' : ''}`}>
-          <div className="complete-fill" style={{ transform: `scale(${completeProgress})` }} />
-          <Icon name={doneToday ? 'close' : 'checkmark'} size={22} />
-        </div>
-      </div>
       <div
         className="card"
         style={{ transform: `translateX(${dx}px)` }}
@@ -141,6 +135,13 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate, onComplete }) {
         onTouchMove={(e) => onMove(e.touches[0].clientX)}
         onTouchEnd={onEnd}
       >
+        <div
+          className="card-complete-fill"
+          style={{
+            opacity: completeProgress,
+            background: doneToday ? '#CE2029' : '#1db954',
+          }}
+        />
         <div className="card-head">
           <h2 className="card-title">{set.name || 'Untitled'}</h2>
         </div>

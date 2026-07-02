@@ -295,7 +295,8 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     // Completing the set means today's freeze (if any) wasn't needed — release it.
     const freezes = { ...set.freezes }
     delete freezes[todayKey()]
-    if (!set.completions?.[todayKey()]) playComplete()
+    // Always chime when a run finishes, even if already marked done today.
+    playComplete()
     onUpdate({
       ...set,
       completions: { ...set.completions, [todayKey()]: true },
