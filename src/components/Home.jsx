@@ -85,7 +85,6 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate, onComplete }) {
   const base = useRef(0)
   const moved = useRef(false)
   const REVEAL = 56
-  const COMPLETE = 96
   const onStart = (x) => {
     start.current = x
     base.current = dx
@@ -94,11 +93,13 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate, onComplete }) {
   const onMove = (x) => {
     if (start.current == null) return
     if (Math.abs(x - start.current) > 6) moved.current = true
-    setDx(Math.max(-REVEAL, Math.min(COMPLETE, base.current + (x - start.current))))
+    setDx(Math.max(-REVEAL, Math.min(REVEAL, base.current + (x - start.current))))
   }
   const onEnd = () => {
-    if (dx >= COMPLETE * 0.6) {
+    if (dx >= REVEAL - 1) {
       onComplete()
+      setDx(0)
+    } else if (dx > 0) {
       setDx(0)
     } else {
       setDx(dx < -REVEAL / 2 ? -REVEAL : 0)
@@ -111,7 +112,7 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate, onComplete }) {
     onOpen()
   }
 
-  const completeReady = dx >= COMPLETE * 0.6
+  const completeProgress = Math.max(0, Math.min(1, dx / REVEAL))
 
   return (
     <div className={`card-wrap${set.kind === 'task' ? ' task' : ''}`}>
@@ -126,8 +127,11 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate, onComplete }) {
           <Icon name="trash" size={20} />
         </button>
       </div>
-      <div className={`card-complete${completeReady ? ' ready' : ''}${doneToday ? ' undo' : ''}`}>
-        <Icon name={doneToday ? 'close' : 'checkmark'} size={22} />
+      <div className="card-complete" style={{ opacity: dx > 0 ? 1 : 0 }}>
+        <div className={`complete-circle${doneToday ? ' undo' : ''}`}>
+          <div className="complete-fill" style={{ transform: `scale(${completeProgress})` }} />
+          <Icon name={doneToday ? 'close' : 'checkmark'} size={22} />
+        </div>
       </div>
       <div
         className="card"
