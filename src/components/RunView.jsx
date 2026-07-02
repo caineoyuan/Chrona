@@ -357,9 +357,9 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     }
     const dur = step.seconds
     deadlineRef.current = performance.now() + dur * 1000
-    // Skip chime thresholds that are already at/above the starting time so a
-    // short timer doesn't fire several chimes at once on start.
-    chimesFiredRef.current = CHIME_TIMES.filter((t) => t >= dur).length
+    // Skip chimes for seconds above the starting time. The chime for the
+    // starting second (threshold dur+0.2) still fires immediately.
+    chimesFiredRef.current = CHIME_TIMES.filter((t) => t > dur + 0.2).length
     stopCountdown()
     setRemaining(dur)
     setProgress(0)
