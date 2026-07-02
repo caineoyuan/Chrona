@@ -206,10 +206,7 @@ button {
 }
 .card-complete {
   position: absolute;
-  left: 0;
-  top: 0;
-  right: 0;
-  bottom: 4px;
+  inset: 0;
   z-index: 0;
   display: flex;
   align-items: center;
