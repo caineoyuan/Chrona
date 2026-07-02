@@ -14,7 +14,7 @@ import {
 } from '../lib.js'
 import { ensurePermission } from '../notify.js'
 import { subscribePush } from '../push.js'
-import { playComplete } from '../sound.js'
+import { playComplete, unlockSounds, countdownElement } from '../sound.js'
 
 const R = 46
 const C = 2 * Math.PI * R
@@ -227,15 +227,13 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
   const rafRef = useRef(0)
   const nodeRefs = useRef({})
   const tapTimer = useRef(null)
-  const audioRef = useRef(null)
   const chimesFiredRef = useRef(0)
   const chimeTimesRef = useRef([])
 
   const playCountdown = () => {
     try {
-      if (!audioRef.current) audioRef.current = new Audio('/countdown.wav')
       // Clone so overlapping plays don't wait for the previous one to finish.
-      const a = audioRef.current.cloneNode()
+      const a = countdownElement().cloneNode()
       a.play().catch(() => {})
     } catch {
       /* ignore */
@@ -263,10 +261,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
   }
 
   const stopCountdown = () => {
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.currentTime = 0
-    }
+    /* chimes are short one-shot clones; nothing persistent to stop */
   }
 
   const completedToday = Boolean(set.completions?.[todayKey()])
@@ -473,6 +468,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
 
   const handleStart = () => {
     if (steps.length === 0) return
+    unlockSounds()
     if (phase === 'paused') {
       const step = steps[iRef.current]
       if (step && step.noTime) {
