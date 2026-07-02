@@ -84,7 +84,9 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate, onComplete }) {
   const start = useRef(null)
   const base = useRef(0)
   const moved = useRef(false)
+  const wrapRef = useRef(null)
   const REVEAL = 56
+  const width = () => wrapRef.current?.offsetWidth || 320
   const onStart = (x) => {
     start.current = x
     base.current = dx
@@ -93,12 +95,14 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate, onComplete }) {
   const onMove = (x) => {
     if (start.current == null) return
     if (Math.abs(x - start.current) > 6) moved.current = true
-    setDx(Math.max(-REVEAL, Math.min(REVEAL, base.current + (x - start.current))))
+    setDx(Math.max(-REVEAL, Math.min(width(), base.current + (x - start.current))))
   }
   const onEnd = () => {
-    if (dx >= REVEAL - 1) {
+    if (dx >= width() * 0.5) {
+      // Fling the card fully off-screen, then complete and reset.
+      setDx(width())
       onComplete()
-      setDx(0)
+      setTimeout(() => setDx(0), 200)
     } else if (dx > 0) {
       setDx(0)
     } else {
@@ -112,11 +116,11 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate, onComplete }) {
     onOpen()
   }
 
-  const completeProgress = Math.max(0, Math.min(1, dx / REVEAL))
-  const fillOpacity = Math.pow(completeProgress, 6)
+  const completeProgress = Math.max(0, Math.min(1, dx / (width() * 0.5)))
+  const fillOpacity = Math.pow(completeProgress, 4)
 
   return (
-    <div className={`card-wrap${set.kind === 'task' ? ' task' : ''}`}>
+    <div ref={wrapRef} className={`card-wrap${set.kind === 'task' ? ' task' : ''}`}>
       <div className="card-actions">
         <button className="swipe-act" title="Edit" onClick={() => { setDx(0); onEdit() }}>
           <Icon name="edit" size={20} />
