@@ -14,6 +14,7 @@ import {
 } from '../lib.js'
 import { ensurePermission } from '../notify.js'
 import { subscribePush } from '../push.js'
+import { playComplete } from '../sound.js'
 
 const R = 46
 const C = 2 * Math.PI * R
@@ -279,6 +280,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     // Completing the set means today's freeze (if any) wasn't needed — release it.
     const freezes = { ...set.freezes }
     delete freezes[todayKey()]
+    if (!set.completions?.[todayKey()]) playComplete()
     onUpdate({
       ...set,
       completions: { ...set.completions, [todayKey()]: true },
@@ -296,6 +298,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
       completions[k] = true
       // Completing releases an unused freeze on today's deadline.
       delete freezes[k]
+      playComplete()
     }
     // Keep the cycle's completion in sync so reopening reflects the new state.
     if (cycleKey !== k) {

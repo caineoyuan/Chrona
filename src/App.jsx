@@ -175,6 +175,7 @@ function Workspace() {
             onEdit={(id) => go({ name: 'edit', id }, 'forward')}
             onDelete={(id) => deleteSet(id)}
             onDuplicate={(id) => duplicateSet(id)}
+            onUpdate={upsertSet}
           />
         )}
 

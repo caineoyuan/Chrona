@@ -313,3 +313,30 @@ export function scheduleLabel(set) {
   if (sc.interval <= 1) return dayLabel
   return `Every ${sc.interval} weeks · ${dayLabel}`
 }
+
+// Is this set already satisfied for today's view (either today or the current
+// scheduled cycle is marked done)?
+export function isDoneForToday(set) {
+  const k = todayKey()
+  const cycleKey = dateKey(lastScheduledDates(set, 1)[0])
+  return Boolean(set.completions?.[k] || set.completions?.[cycleKey])
+}
+
+// Toggle today's completion, keeping the schedule cycle in sync and releasing
+// an unused freeze when completing. Returns the updated set and the new state.
+export function toggleSetCompleteToday(set) {
+  const k = todayKey()
+  const cycleKey = dateKey(lastScheduledDates(set, 1)[0])
+  const completions = { ...set.completions }
+  const freezes = { ...set.freezes }
+  const wasComplete = Boolean(completions[k] || completions[cycleKey])
+  if (wasComplete) {
+    delete completions[k]
+    delete completions[cycleKey]
+  } else {
+    completions[k] = true
+    if (cycleKey !== k) completions[cycleKey] = true
+    delete freezes[k]
+  }
+  return { set: { ...set, completions, freezes }, completed: !wasComplete }
+}

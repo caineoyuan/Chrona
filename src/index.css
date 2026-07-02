@@ -139,6 +139,14 @@ button {
   display: grid;
   gap: 16px;
 }
+.home-section {
+  margin-top: 22px;
+}
+.section-title {
+  font-size: 20px;
+  margin: 0 0 12px;
+  color: var(--muted);
+}
 .card-wrap {
   position: relative;
   background: var(--accent);
@@ -195,6 +203,29 @@ button {
   align-items: center;
   justify-content: space-around;
   background: transparent;
+}
+.card-complete {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 4px;
+  width: 96px;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  padding-left: 20px;
+  border-radius: 2px;
+  color: #fff;
+  background: #1DB954;
+}
+.card-complete.undo {
+  background: #64748b;
+}
+.card-complete.ready {
+  filter: brightness(1.15);
+}
+.card-complete svg path {
+  stroke: #fff;
 }
 .swipe-act {
   width: 40px;

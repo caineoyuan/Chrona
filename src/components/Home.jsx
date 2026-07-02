@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import Icon from './Icon.jsx'
+import { playComplete } from '../sound.js'
 import {
   totalSeconds,
   formatDuration,
@@ -13,6 +14,8 @@ import {
   weeklyTarget,
   weeklyCount,
   ringColor,
+  isDoneForToday,
+  toggleSetCompleteToday,
   WEEKDAYS,
 } from '../lib.js'
 
@@ -67,12 +70,12 @@ function WeeklyRing({ set }) {
   )
 }
 
-function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate }) {
+function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate, onComplete }) {
   const total = totalSeconds(set)
   const streak = computeStreak(set)
   const todayK = dateKey(new Date())
   const dueToday = isScheduled(set, new Date())
-  const doneToday = Boolean(set.completions?.[todayK])
+  const doneToday = isDoneForToday(set)
   const frozenToday = Boolean(set.freezes?.[todayK])
   const flameLit = !(dueToday && !doneToday && !frozenToday)
   const weekly = normalizeSchedule(set).mode === 'weekly'
@@ -82,6 +85,7 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate }) {
   const base = useRef(0)
   const moved = useRef(false)
   const REVEAL = 56
+  const COMPLETE = 96
   const onStart = (x) => {
     start.current = x
     base.current = dx
@@ -90,10 +94,15 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate }) {
   const onMove = (x) => {
     if (start.current == null) return
     if (Math.abs(x - start.current) > 6) moved.current = true
-    setDx(Math.max(-REVEAL, Math.min(0, base.current + (x - start.current))))
+    setDx(Math.max(-REVEAL, Math.min(COMPLETE, base.current + (x - start.current))))
   }
   const onEnd = () => {
-    setDx((d) => (d < -REVEAL / 2 ? -REVEAL : 0))
+    if (dx >= COMPLETE * 0.6) {
+      onComplete()
+      setDx(0)
+    } else {
+      setDx(dx < -REVEAL / 2 ? -REVEAL : 0)
+    }
     start.current = null
   }
   const open = () => {
@@ -101,6 +110,8 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate }) {
     if (dx !== 0) { setDx(0); return }
     onOpen()
   }
+
+  const completeReady = dx >= COMPLETE * 0.6
 
   return (
     <div className={`card-wrap${set.kind === 'task' ? ' task' : ''}`}>
@@ -114,6 +125,9 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate }) {
         <button className="swipe-act danger" title="Delete" onClick={() => { setDx(0); onDelete() }}>
           <Icon name="trash" size={20} />
         </button>
+      </div>
+      <div className={`card-complete${completeReady ? ' ready' : ''}${doneToday ? ' undo' : ''}`}>
+        <Icon name={doneToday ? 'close' : 'checkmark'} size={22} />
       </div>
       <div
         className="card"
@@ -159,9 +173,37 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate }) {
   )
 }
 
-export default function Home({ sets, onAdd, onOpen, onEdit, onDelete, onDuplicate }) {
+export default function Home({ sets, onAdd, onOpen, onEdit, onDelete, onDuplicate, onUpdate }) {
   const [confirming, setConfirming] = useState(null) // set pending deletion
   const [choosing, setChoosing] = useState(false)
+
+  const completeCard = (set) => {
+    const { set: next, completed } = toggleSetCompleteToday(set)
+    onUpdate(next)
+    if (completed) playComplete()
+  }
+
+  const renderCard = (s) => (
+    <SetCard
+      key={s.id}
+      set={s}
+      onOpen={() => onOpen(s.id)}
+      onEdit={() => onEdit(s.id)}
+      onDelete={() => setConfirming(s)}
+      onDuplicate={() => onDuplicate(s.id)}
+      onComplete={() => completeCard(s)}
+    />
+  )
+
+  const todo = []
+  const done = []
+  for (const s of sets) {
+    const dueToday = isScheduled(s, new Date())
+    const isDone = isDoneForToday(s)
+    const frozen = Boolean(s.freezes?.[dateKey(new Date())])
+    if (dueToday && !isDone && !frozen) todo.push(s)
+    else done.push(s)
+  }
 
   return (
     <div className="home">
@@ -195,18 +237,20 @@ export default function Home({ sets, onAdd, onOpen, onEdit, onDelete, onDuplicat
           </button>
         </div>
       ) : (
-        <div className="card-grid">
-          {sets.map((s) => (
-            <SetCard
-              key={s.id}
-              set={s}
-              onOpen={() => onOpen(s.id)}
-              onEdit={() => onEdit(s.id)}
-              onDelete={() => setConfirming(s)}
-              onDuplicate={() => onDuplicate(s.id)}
-            />
-          ))}
-        </div>
+        <>
+          {todo.length > 0 && (
+            <section className="home-section">
+              <h2 className="section-title">To do today</h2>
+              <div className="card-grid">{todo.map(renderCard)}</div>
+            </section>
+          )}
+          {done.length > 0 && (
+            <section className="home-section">
+              <h2 className="section-title">Completed for now</h2>
+              <div className="card-grid">{done.map(renderCard)}</div>
+            </section>
+          )}
+        </>
       )}
 
       {choosing && (
