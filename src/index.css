@@ -204,12 +204,30 @@ button {
   justify-content: space-around;
   background: transparent;
 }
+.card-complete {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 4px;
+  width: 56px;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
 .card-complete-fill {
   position: absolute;
   inset: 0;
-  z-index: 2;
-  border-radius: 2px;
+  border-radius: 2px 0 0 2px;
   pointer-events: none;
+}
+.card-complete svg {
+  position: relative;
+  z-index: 1;
+}
+.card-complete svg path {
+  stroke: #fff;
 }
 .swipe-act {
   width: 40px;
