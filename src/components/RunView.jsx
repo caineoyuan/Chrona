@@ -233,7 +233,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
 
   const playCountdown = () => {
     try {
-      if (!audioRef.current) audioRef.current = new Audio('/countdown.mp3')
+      if (!audioRef.current) audioRef.current = new Audio('/countdown.wav')
       // Clone so overlapping plays don't wait for the previous one to finish.
       const a = audioRef.current.cloneNode()
       a.play().catch(() => {})
