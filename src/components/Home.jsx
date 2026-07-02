@@ -98,8 +98,8 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate, onComplete }) {
     setDx(Math.max(-REVEAL, Math.min(width(), base.current + (x - start.current))))
   }
   const onEnd = () => {
-    if (dx >= width() * 0.5) {
-      // Fling the card fully off-screen, then complete and reset.
+    if (dx >= width() * 0.9) {
+      // Flung fully off-screen → complete, then reset.
       setDx(width())
       onComplete()
       setTimeout(() => setDx(0), 200)
@@ -116,7 +116,7 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate, onComplete }) {
     onOpen()
   }
 
-  const completeProgress = Math.max(0, Math.min(1, dx / (width() * 0.5)))
+  const completeProgress = Math.max(0, Math.min(1, dx / width()))
   const fillOpacity = Math.pow(completeProgress, 4)
 
   return (
