@@ -95,7 +95,17 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate, onComplete }) {
   const onMove = (x) => {
     if (start.current == null) return
     if (Math.abs(x - start.current) > 6) moved.current = true
-    setDx(Math.max(-REVEAL, Math.min(width(), base.current + (x - start.current))))
+    const w = width()
+    let raw = base.current + (x - start.current)
+    // Amplify rightward travel past 25% so the card is easier to fling off.
+    if (raw > 0) {
+      const knee = w * 0.25
+      if (raw > knee) raw = knee + (raw - knee) * 2.5
+      raw = Math.min(w, raw)
+    } else {
+      raw = Math.max(-REVEAL, raw)
+    }
+    setDx(raw)
   }
   const onEnd = () => {
     if (dx >= width() * 0.9) {
