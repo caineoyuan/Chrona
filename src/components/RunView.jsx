@@ -226,6 +226,27 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
   const rafRef = useRef(0)
   const nodeRefs = useRef({})
   const tapTimer = useRef(null)
+  const audioRef = useRef(null)
+  const soundPlayedRef = useRef(false)
+
+  const playCountdown = () => {
+    if (soundPlayedRef.current) return
+    soundPlayedRef.current = true
+    try {
+      if (!audioRef.current) audioRef.current = new Audio('/countdown.mp3')
+      audioRef.current.currentTime = 0
+      audioRef.current.play().catch(() => {})
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const stopCountdown = () => {
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.currentTime = 0
+    }
+  }
 
   const completedToday = Boolean(set.completions?.[todayKey()])
   const freezesUsed = usedFreezes(set)
@@ -238,6 +259,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     () => () => {
       cancelAnimationFrame(rafRef.current)
       if (tapTimer.current) clearTimeout(tapTimer.current)
+      stopCountdown()
     },
     []
   )
@@ -321,6 +343,8 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     }
     const dur = step.seconds
     deadlineRef.current = performance.now() + dur * 1000
+    soundPlayedRef.current = false
+    stopCountdown()
     setRemaining(dur)
     setProgress(0)
     setPhase('running')
@@ -350,6 +374,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     }
     setRemaining(rem)
     setProgress(1 - rem / dur)
+    if (rem <= 5) playCountdown()
     rafRef.current = requestAnimationFrame(tick)
   }
 
@@ -438,11 +463,14 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
 
   const handlePause = () => {
     cancelAnimationFrame(rafRef.current)
+    stopCountdown()
     setPhase('paused')
   }
 
   const handleReset = () => {
     cancelAnimationFrame(rafRef.current)
+    stopCountdown()
+    soundPlayedRef.current = false
     iRef.current = -1
     setIndex(-1)
     setProgress(0)
