@@ -208,18 +208,19 @@ button {
   position: absolute;
   left: 0;
   top: 0;
+  right: 0;
   bottom: 4px;
-  width: 56px;
   z-index: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  padding-left: 18px;
   color: #fff;
 }
 .card-complete-fill {
   position: absolute;
   inset: 0;
-  border-radius: 2px 0 0 2px;
+  border-radius: 2px;
   pointer-events: none;
 }
 .card-complete svg {

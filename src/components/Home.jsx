@@ -113,6 +113,7 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate, onComplete }) {
   }
 
   const completeProgress = Math.max(0, Math.min(1, dx / REVEAL))
+  const fillOpacity = Math.pow(completeProgress, 3)
 
   return (
     <div className={`card-wrap${set.kind === 'task' ? ' task' : ''}`}>
@@ -131,7 +132,7 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate, onComplete }) {
         <div
           className="card-complete-fill"
           style={{
-            opacity: completeProgress,
+            opacity: fillOpacity,
             background: doneToday ? '#CE2029' : '#1db954',
           }}
         />
