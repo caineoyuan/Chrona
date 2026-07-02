@@ -229,7 +229,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
   const tapTimer = useRef(null)
   const audioRef = useRef(null)
   const chimesFiredRef = useRef(0)
-  const CHIME_TIMES = [5.2, 4.2, 3.2, 2.2, 1.2]
+  const chimeTimesRef = useRef([])
 
   const playCountdown = () => {
     try {
@@ -242,11 +242,20 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     }
   }
 
-  // Fire any countdown chimes whose threshold the remaining time has crossed.
+  // Chime remaining-time marks for a step: start 0.2s before each second
+  // (5.2, 4.2, …) but if the timer is short, start immediately and keep an
+  // even 1s spacing so the first gap isn't rushed.
+  const chimeTimesFor = (dur) => {
+    const base = Math.min(dur, 5.2)
+    return [0, 1, 2, 3, 4].map((k) => base - k).filter((t) => t > 0.05)
+  }
+
+  // Fire any countdown chimes whose mark the remaining time has crossed.
   const updateCountdown = (rem) => {
+    const times = chimeTimesRef.current
     while (
-      chimesFiredRef.current < CHIME_TIMES.length &&
-      rem <= CHIME_TIMES[chimesFiredRef.current]
+      chimesFiredRef.current < times.length &&
+      rem <= times[chimesFiredRef.current]
     ) {
       playCountdown()
       chimesFiredRef.current += 1
@@ -357,9 +366,9 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     }
     const dur = step.seconds
     deadlineRef.current = performance.now() + dur * 1000
-    // Skip chimes for seconds above the starting time. The chime for the
-    // starting second (threshold dur+0.2) still fires immediately.
-    chimesFiredRef.current = CHIME_TIMES.filter((t) => t > dur + 0.2).length
+    // Chime marks anchored so the last 5 seconds are evenly spaced (1s apart).
+    chimeTimesRef.current = chimeTimesFor(dur)
+    chimesFiredRef.current = 0
     stopCountdown()
     setRemaining(dur)
     setProgress(0)
@@ -374,8 +383,8 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
       const next = i + 1
       if (next >= steps.length) {
         // finished a full pass through the set
-        markCompleteToday()
         if (set.loop) {
+          markCompleteToday()
           startAt(0)
           if (!steps[0].noTime) rafRef.current = requestAnimationFrame(tick)
           return
@@ -486,7 +495,8 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
   const handleReset = () => {
     cancelAnimationFrame(rafRef.current)
     stopCountdown()
-    chimesFiredRef.current = CHIME_TIMES.length
+    chimeTimesRef.current = []
+    chimesFiredRef.current = 0
     iRef.current = -1
     setIndex(-1)
     setProgress(0)
