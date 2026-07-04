@@ -14,7 +14,7 @@ import {
 } from '../lib.js'
 import { ensurePermission } from '../notify.js'
 import { subscribePush } from '../push.js'
-import { playComplete, unlockSounds, countdownElement } from '../sound.js'
+import { playComplete, playCountdown, unlockSounds } from '../sound.js'
 
 const R = 46
 const C = 2 * Math.PI * R
@@ -229,16 +229,6 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
   const tapTimer = useRef(null)
   const chimesFiredRef = useRef(0)
   const chimeTimesRef = useRef([])
-
-  const playCountdown = () => {
-    try {
-      // Clone so overlapping plays don't wait for the previous one to finish.
-      const a = countdownElement().cloneNode()
-      a.play().catch(() => {})
-    } catch {
-      /* ignore */
-    }
-  }
 
   // Chime remaining-time marks for a step: start 0.2s before each second
   // (5.2, 4.2, …) but if the timer is short, start immediately and keep an

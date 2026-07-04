@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import Icon from './Icon.jsx'
-import { playComplete } from '../sound.js'
+import { playComplete, unlockSounds } from '../sound.js'
 import {
   totalSeconds,
   formatDuration,
@@ -88,6 +88,7 @@ function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate, onComplete }) {
   const REVEAL = 56
   const width = () => wrapRef.current?.offsetWidth || 320
   const onStart = (x) => {
+    unlockSounds()
     start.current = x
     base.current = dx
     moved.current = false
