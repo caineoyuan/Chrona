@@ -70,3 +70,21 @@ export async function subscribePush() {
   })
   return true
 }
+
+// Force a clean re-subscribe: drop any existing subscription (locally and on
+// the server) and create a fresh one. Use this when notifications are stuck.
+export async function reregisterPush() {
+  if (!pushSupported()) return false
+  const reg = await registerSW()
+  if (reg) {
+    const old = await reg.pushManager.getSubscription()
+    if (old) {
+      await api('/api/push/unsubscribe', {
+        method: 'POST',
+        body: JSON.stringify({ endpoint: old.endpoint }),
+      }).catch(() => {})
+      await old.unsubscribe().catch(() => {})
+    }
+  }
+  return subscribePush()
+}

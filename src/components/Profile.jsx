@@ -2,7 +2,7 @@ import { useState } from 'react'
 import Icon from './Icon.jsx'
 import { useAuth } from '../auth.jsx'
 import { api } from '../auth.jsx'
-import { subscribePush, pushSupported } from '../push.js'
+import { subscribePush, reregisterPush, pushSupported } from '../push.js'
 
 function PasswordField({ value, onChange, placeholder, autoComplete }) {
   const [show, setShow] = useState(false)
@@ -54,6 +54,20 @@ export default function Profile({ onClose }) {
     }
   }
 
+  const reregister = async () => {
+    setTestMsg('Re-registering…')
+    try {
+      const ok = await reregisterPush()
+      setTestMsg(
+        ok
+          ? 'Notifications re-registered. Try "Send test notification".'
+          : 'Enable notifications first (tap a set’s bell and allow).',
+      )
+    } catch (e) {
+      setTestMsg(e.message || 'Could not re-register.')
+    }
+  }
+
   const submit = async (e) => {
     e.preventDefault()
     if (busy) return
@@ -97,6 +111,9 @@ export default function Profile({ onClose }) {
               <h3 className="section-title">Notifications</h3>
               <button type="button" className="logout-btn" onClick={sendTest} title="Send a test notification">
                 Send test notification
+              </button>
+              <button type="button" className="logout-btn" onClick={reregister} title="Fix stuck notifications by re-registering this device">
+                Re-register notifications
               </button>
               {testMsg && <p className="auth-success">{testMsg}</p>}
             </>

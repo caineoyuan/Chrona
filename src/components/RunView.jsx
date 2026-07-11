@@ -518,8 +518,8 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     }
   }
 
-  // Rewind: triple tap. If we're more than 1s into the current step, restart
-  // it; if we're still in the first second, jump back to the previous step.
+  // Rewind: triple tap. If we're more than 2s into the current step, restart
+  // it; if we're still in the first 2 seconds, jump back to the previous step.
   const rewindStep = () => {
     const i = iRef.current
     if (i < 0 || i >= steps.length) return
@@ -527,7 +527,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     const elapsed = dur > 0 ? progress * dur : 0
     const wasRunning = phase === 'running'
     cancelAnimationFrame(rafRef.current)
-    const target = elapsed >= 1 || i === 0 ? i : i - 1
+    const target = elapsed >= 2 || i === 0 ? i : i - 1
     startAt(target)
     // Restarting the same timed step while running leaves phase/index
     // unchanged, so the [phase, index] effect won't re-fire — kick the loop
