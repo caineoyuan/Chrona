@@ -28,6 +28,16 @@ function urlBase64ToUint8Array(base64) {
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)))
 }
 
+// Base64url form of the key an existing subscription was created with, so we
+// can tell when the server's VAPID key has changed underneath us.
+function keyOf(sub) {
+  const buf = sub?.options?.applicationServerKey
+  if (!buf) return null
+  let bin = ''
+  for (const b of new Uint8Array(buf)) bin += String.fromCharCode(b)
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
 // Subscribe this device for background push. Returns true on success.
 export async function subscribePush() {
   if (!pushSupported()) return false
@@ -38,7 +48,15 @@ export async function subscribePush() {
   if (!reg) return false
   const { key } = await api('/api/push/key').catch(() => ({ key: '' }))
   if (!key) return false
+  const wantKey = key.replace(/=+$/, '')
   let sub = await reg.pushManager.getSubscription()
+  // A subscription is bound to the VAPID key it was created with. If the
+  // server key has since changed, the old subscription is dead (sends fail
+  // with 403), so drop it and make a fresh one with the current key.
+  if (sub && keyOf(sub) && keyOf(sub) !== wantKey) {
+    await sub.unsubscribe().catch(() => {})
+    sub = null
+  }
   if (!sub) {
     sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,

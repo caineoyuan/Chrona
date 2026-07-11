@@ -66,7 +66,7 @@ router.post('/test', requireAuth, async (req, res) => {
     await Promise.all(
       subs.map((s) =>
         webpush.sendNotification(asObj(s.subscription), payload).catch(async (err) => {
-          if (err?.statusCode === 404 || err?.statusCode === 410)
+          if ([403, 404, 410].includes(err?.statusCode))
             await query('DELETE FROM push_subscriptions WHERE endpoint = $1', [s.endpoint]).catch(() => {})
         }),
       ),
@@ -111,7 +111,7 @@ async function send(sub, set, when) {
       JSON.stringify({ title: 'Chrona', body, tag: `${set.id}-${dateKey(new Date())}-${when}` }),
     )
   } catch (err) {
-    if (err?.statusCode === 404 || err?.statusCode === 410) {
+    if ([403, 404, 410].includes(err?.statusCode)) {
       await query('DELETE FROM push_subscriptions WHERE endpoint = $1', [sub.endpoint]).catch(() => {})
     }
   }
