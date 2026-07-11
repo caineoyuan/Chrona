@@ -518,18 +518,38 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     }
   }
 
-  // Distinguish a single tap (pause/resume) from a double tap (skip).
-  const handleTimerTap = () => {
-    if (tapTimer.current) {
-      clearTimeout(tapTimer.current)
-      tapTimer.current = null
-      skipStep()
-      return
+  // Rewind: triple tap. If we're more than 1s into the current step, restart
+  // it; if we're still in the first second, jump back to the previous step.
+  const rewindStep = () => {
+    const i = iRef.current
+    if (i < 0 || i >= steps.length) return
+    const dur = steps[i].seconds || 0
+    const elapsed = dur > 0 ? progress * dur : 0
+    const wasRunning = phase === 'running'
+    cancelAnimationFrame(rafRef.current)
+    const target = elapsed >= 1 || i === 0 ? i : i - 1
+    startAt(target)
+    // Restarting the same timed step while running leaves phase/index
+    // unchanged, so the [phase, index] effect won't re-fire — kick the loop
+    // manually. A jump to a different step re-fires the effect on its own.
+    if (target === i && wasRunning && !steps[target].noTime) {
+      rafRef.current = requestAnimationFrame(tick)
     }
+  }
+
+  // Resolve tap gestures by count: 1 = pause/resume, 2 = skip, 3 = rewind.
+  const tapCount = useRef(0)
+  const handleTimerTap = () => {
+    tapCount.current += 1
+    if (tapTimer.current) clearTimeout(tapTimer.current)
     tapTimer.current = setTimeout(() => {
+      const n = tapCount.current
+      tapCount.current = 0
       tapTimer.current = null
-      togglePauseResume()
-    }, 250)
+      if (n >= 3) rewindStep()
+      else if (n === 2) skipStep()
+      else togglePauseResume()
+    }, 260)
   }
 
   const handleFreeze = () => {
