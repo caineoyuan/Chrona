@@ -146,7 +146,7 @@
 .medira-shell.light .action-glyph {
   color: #777773;
 }
-.medira-shell.light .calendar-day.taken > span {
+.medira-shell.light .calendar-day.taken > button {
   color: var(--text);
   background: var(--button-neutral);
 }
@@ -296,6 +296,8 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .med-grid .med-name-row { margin-top: 0; }
 .med-grid .med-card .card-title { margin-top: 0; }
 .med-grid .notes { border-top: 0; padding-top: 0; min-height: 0; padding-right: 120px; }
+.med-card.clickable { cursor: pointer; outline: none; }
+.med-card.clickable:focus-visible { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent), 2px 3px 7px rgba(0,0,0,.25); }
 .med-card-head { display: flex; justify-content: space-between; }
 .med-symbol { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; background: rgba(1,238,184,.12); color: var(--accent-ink); }
 .medication-actions { display: flex; gap: 6px; }
@@ -382,8 +384,8 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .manual-entry-btn { min-height: 48px; margin-top: 16px; padding: 16px; border-radius: 12px; font-size: var(--font-sm); font-weight: 600; }
 .modal label, .modal legend { display: block; color: #d6d6d6; font-size: var(--font-sm); font-weight: 600; margin-bottom: 15px; }
 .optional { color: var(--muted); font-weight: 400; float: right; }
-.modal input:not([type="checkbox"]), .modal textarea, .modal select { display: block; width: 100%; margin-top: 7px; padding: 8px 16px; color: var(--text); background: var(--bg-2); border: 1px solid var(--line); border-radius: 3px; outline: none; resize: vertical; }
-.modal input:not([type="checkbox"]), .modal textarea, .modal select { font-family: var(--sans); font-size: var(--font-sm); }
+.modal input:not([type="checkbox"]):not([type="radio"]), .modal textarea, .modal select { display: block; width: 100%; margin-top: 7px; padding: 8px 16px; color: var(--text); background: var(--bg-2); border: 1px solid var(--line); border-radius: 3px; outline: none; resize: vertical; }
+.modal input:not([type="checkbox"]):not([type="radio"]), .modal textarea, .modal select { font-family: var(--sans); font-size: var(--font-sm); }
 .modal input:focus, .modal textarea:focus, .modal select:focus { border-color: var(--accent); }
 .modal fieldset { border: 0; padding: 0; margin: 0 0 12px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 9px; }
@@ -413,11 +415,17 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .reminder-option-grid button.active,
 .custom-unit-picker button.active { color: #343331; background: var(--accent); border-color: var(--accent); }
 .modal .custom-reminder-input:not([type="checkbox"]) { min-width: 0; width: 100%; margin: 0; padding: 8px; color: #343331; text-align: center; background: var(--accent); border: 1px solid var(--accent); border-radius: 12px; font-size: var(--font-sm); font-weight: 600; appearance: textfield; }
+.custom-reminder-control { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.custom-reminder-control .icon-btn { width: 40px; height: 40px; }
 .custom-reminder-input::-webkit-inner-spin-button,
 .custom-reminder-input::-webkit-outer-spin-button { margin: 0; appearance: none; }
 .custom-unit-picker { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 16px; }
 .time-list { display: grid; gap: 7px; }
 .time-row { display: flex; align-items: center; gap: 8px; }
+.start-date-options { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 16px; }
+.modal .start-date-options label { display: flex; align-items: center; gap: 8px; min-height: 40px; margin: 0; padding: 8px; color: var(--muted); background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; }
+.start-date-options input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.start-date-field { margin-top: 16px; }
 .weekday-picker { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin: 4px 0 14px; }
 .weekday-picker button { aspect-ratio: 1; min-width: 0; padding: 0; color: var(--muted); background: var(--bg-2); border: 1px solid var(--line); border-radius: 50%; font-size: var(--font-xs); font-weight: 600; }
 .weekday-picker button.active { color: white; background: var(--accent); border-color: var(--accent); }
@@ -439,10 +447,20 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .time-input b { margin: 0; color: var(--muted); font-size: var(--font-sm); line-height: 1; }
 .time-input input:not([type="checkbox"]) { width: 40px; height: 40px; margin: 0; padding: 8px 0; color: var(--text); text-align: center; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; font-family: var(--sans); font-size: var(--font-sm); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: 1px; caret-color: auto; }
 .time-input input:focus { color: var(--text); border-color: var(--accent); outline: none; }
+.time-input > .time-period { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin-left: 4px; }
+.time-period button { min-width: 40px; height: 40px; padding: 8px; color: var(--muted); background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; font-size: var(--font-xs); font-weight: 700; }
+.time-period button.active { color: #343331; background: var(--accent); border-color: var(--accent); }
+.medira-shell.light .time-period button.active { color: white; }
 .time-input.compact { padding: 0; }
 .time-input.compact b { font-size: var(--font-sm); }
 .time-input.compact input:not([type="checkbox"]) { width: 40px; height: 40px; font-size: var(--font-sm); }
 .interval-time-list { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.notification-setup { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; margin: 16px 0; padding: 16px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 2px; }
+.notification-setup span { display: flex; flex-direction: column; gap: 4px; }
+.notification-setup strong { color: var(--text); font-size: var(--font-sm); }
+.notification-setup small, .notification-setup p { color: var(--muted); font-size: var(--font-xs); }
+.notification-setup p { grid-column: 1 / -1; margin: 0; }
+.notification-setup .secondary-btn { padding: 8px 16px; }
 .modal .text-btn { padding-left: 0; margin-top: 5px; }
 .modal-footer .icon-btn { width: 40px; height: 40px; }
 .modal-footer .modal-save {
@@ -466,6 +484,8 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .detail-list > div { display: flex; flex: 1 1 128px; min-width: 0; flex-direction: column; gap: 4px; }
 .detail-list span { color: var(--muted); font-size: var(--font-xs); text-transform: uppercase; letter-spacing: .8px; }
 .detail-list strong { color: var(--text); font-size: var(--font-sm); overflow-wrap: anywhere; }
+.detail-inventory-controls { display: flex; gap: 8px; margin-top: 4px; }
+.detail-inventory-controls .icon-btn { width: 32px; height: 32px; }
 .detail-site-map { padding: 16px 0 8px; }
 .thigh-map.compact { gap: 16px; padding-inline: 40px; }
 .thigh-map.compact .thigh-shape { height: 155px; }
@@ -474,16 +494,24 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .detail-instructions span { color: var(--accent-ink); font-size: var(--font-xs); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
 .detail-instructions p { margin: 6px 0 0; color: #d2d2d2; font-size: var(--font-sm); line-height: 1.55; white-space: pre-wrap; }
 .medication-calendar { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--line); }
-.calendar-heading { margin-bottom: 16px; }
-.calendar-month + .calendar-month { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--line); }
+.calendar-heading { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 16px; }
+.calendar-heading small { color: var(--muted); font-size: var(--font-xs); }
+.calendar-scroll { display: flex; overflow-x: auto; overscroll-behavior-inline: contain; scroll-snap-type: x mandatory; scrollbar-color: var(--muted) transparent; }
+.calendar-month { flex: 0 0 100%; min-width: 0; scroll-snap-align: start; }
 .calendar-month h4 { margin: 0 0 16px; color: var(--text); font-family: var(--serif); font-size: var(--font-md); font-style: italic; font-weight: 400; }
 .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
 .calendar-weekday { color: var(--muted); font-size: var(--font-xs); text-align: center; }
 .calendar-blank { min-height: 48px; }
 .calendar-day { display: flex; min-width: 0; min-height: 48px; flex-direction: column; align-items: center; gap: 4px; color: var(--muted); font-size: var(--font-sm); }
-.calendar-day > span { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border-radius: 50%; font-variant-numeric: tabular-nums; line-height: 1; text-align: center; }
-.calendar-day.taken > span { color: #073d31; background: var(--accent); font-weight: 700; }
+.calendar-day > button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; color: inherit; background: transparent; border: 2px solid transparent; border-radius: 50%; font-variant-numeric: tabular-nums; line-height: 1; text-align: center; }
+.calendar-day.taken > button { color: #073d31; background: var(--accent); font-weight: 700; }
+.calendar-day.missed > button { border-color: var(--accent); border-style: dashed; }
 .calendar-day small { color: var(--accent-ink); font-size: var(--font-xs); line-height: 1; text-align: center; white-space: nowrap; }
+.calendar-info-balloon { position: relative; display: flex; flex-direction: column; gap: 4px; margin: 16px 8px 0; padding: 16px; color: var(--text); background: var(--bg-2); border: 1px solid var(--accent); border-radius: 2px; box-shadow: 0 8px 24px rgba(0,0,0,.22); }
+.calendar-info-balloon::before { position: absolute; top: -7px; left: 24px; width: 12px; height: 12px; content: ''; background: var(--bg-2); border-top: 1px solid var(--accent); border-left: 1px solid var(--accent); transform: rotate(45deg); }
+.calendar-info-balloon strong { font-size: var(--font-sm); }
+.calendar-info-balloon span { color: var(--muted); font-size: var(--font-xs); }
+.calendar-load { width: 100%; margin: 8px 0; padding: 8px 16px; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 12px; font-size: var(--font-xs); }
 .site-instruction { color: var(--muted); font-size: var(--font-sm); margin: -8px 0 10px; }
 .site-legend { display: flex; justify-content: center; gap: 14px; margin-bottom: 14px; }
 .site-legend span { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: var(--font-xs); }

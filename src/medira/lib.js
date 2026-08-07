@@ -20,11 +20,34 @@ export function updateTimeDigit(value, index, digit) {
 }
 
 export function parsePastedTime(value) {
+  const twelveHour = value.trim().match(/^(\d{1,2})(?::?([0-5]\d))\s*([ap])\.?m\.?$/i)
+  if (twelveHour) {
+    return toTwentyFourHourTime(twelveHour[1], twelveHour[2], twelveHour[3].toUpperCase() === 'A' ? 'AM' : 'PM')
+  }
   const digits = value.replace(/\D/g, '')
   if (digits.length !== 4) return null
   const hours = Number(digits.slice(0, 2))
   const minutes = Number(digits.slice(2))
   return hours <= 23 && minutes <= 59 ? `${digits.slice(0, 2)}:${digits.slice(2)}` : null
+}
+
+export function toTwelveHourTime(value) {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value)
+  if (!match) return { hours: '12', minutes: '00', period: 'AM' }
+  const hours = Number(match[1])
+  return {
+    hours: String(hours % 12 || 12).padStart(2, '0'),
+    minutes: match[2],
+    period: hours >= 12 ? 'PM' : 'AM',
+  }
+}
+
+export function toTwentyFourHourTime(hours, minutes, period) {
+  const hour = Number(hours)
+  const minute = Number(minutes)
+  if (!['AM', 'PM'].includes(period) || !Number.isInteger(hour) || hour < 1 || hour > 12 || !Number.isInteger(minute) || minute < 0 || minute > 59) return null
+  const normalizedHours = period === 'PM' ? hour % 12 + 12 : hour % 12
+  return `${String(normalizedHours).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
 }
 
 export function wakingHourSchedule(intervalHours) {
@@ -47,6 +70,50 @@ function atTime(date, time) {
   const result = new Date(date)
   result.setHours(hours, minutes, 0, 0)
   return result
+}
+
+function localDateKey(date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-')
+}
+
+export function localScheduleAnchor(dateKey, time) {
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey)
+  const timeMatch = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time)
+  if (!dateMatch || !timeMatch) return null
+  const result = new Date(
+    Number(dateMatch[1]),
+    Number(dateMatch[2]) - 1,
+    Number(dateMatch[3]),
+    Number(timeMatch[1]),
+    Number(timeMatch[2]),
+    0,
+    0,
+  )
+  return Number.isNaN(result.getTime()) || localDateKey(result) !== dateKey ? null : result
+}
+
+export function reminderOffsets(notifications) {
+  const stored = Array.isArray(notifications?.advanceMinutes)
+    ? notifications.advanceMinutes
+    : [notifications?.advanceMinutes ?? 0]
+  return [...new Set(stored
+    .map(Number)
+    .filter((value) => Number.isFinite(value) && value >= 0 && value <= 10_080)
+    .map(Math.round))]
+    .sort((a, b) => a - b)
+}
+
+export function formatReminderAdvance(minutes) {
+  if (!minutes) return 'Scheduled dose'
+  if (minutes % 60 === 0) {
+    const hours = minutes / 60
+    return `${hours} ${hours === 1 ? 'hour' : 'hours'} until the scheduled dose`
+  }
+  return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} until the scheduled dose`
 }
 
 function doseKey(medicationId, scheduledAt) {
@@ -72,6 +139,7 @@ function scheduleForDay(medication, day) {
 
 function scheduledTimesForDay(medication, day) {
   const schedule = scheduleForDay(medication, day)
+  if (schedule.startDate && localDateKey(day) < schedule.startDate) return []
   if (schedule.type === 'weekly' && !schedule.weekdays.includes(day.getDay())) return []
   if (schedule.type === 'day-interval') {
     const anchor = new Date(schedule.anchorAt || medication.createdAt)
@@ -192,9 +260,11 @@ export function getNextReminder(medications, now = new Date()) {
     for (const medication of medications) {
       if (medication.notifications?.enabled === false) continue
       for (const { scheduledAt, time, slotIndex } of scheduledTimesForDay(medication, day)) {
-        const alertAt = new Date(scheduledAt.getTime() - (medication.notifications?.advanceMinutes || 0) * MINUTE)
-        if (alertAt >= now && isActiveAt(medication, scheduledAt) && !recordFor(medication, scheduledAt)) {
-          candidates.push({ medication, time, slotIndex, scheduledAt, alertAt })
+        for (const advanceMinutes of reminderOffsets(medication.notifications)) {
+          const alertAt = new Date(scheduledAt.getTime() - advanceMinutes * MINUTE)
+          if (alertAt >= now && isActiveAt(medication, scheduledAt) && !recordFor(medication, scheduledAt)) {
+            candidates.push({ medication, time, slotIndex, scheduledAt, alertAt, advanceMinutes })
+          }
         }
       }
     }
@@ -210,20 +280,22 @@ export function getUpcomingReminders(medications, now = new Date(), days = 32) {
     for (const medication of medications) {
       if (medication.notifications?.enabled === false) continue
       for (const { scheduledAt, time } of scheduledTimesForDay(medication, day)) {
-        const advanceMinutes = medication.notifications?.advanceMinutes || 0
-        const alertAt = new Date(scheduledAt.getTime() - advanceMinutes * MINUTE)
-        if (scheduledAt < now || alertAt < now || !isActiveAt(medication, scheduledAt) || recordFor(medication, scheduledAt)) continue
-        const prefix = advanceMinutes ? `${advanceMinutes} minutes until the scheduled dose` : 'Scheduled dose'
-        reminders.push({
-          id: `${medication.id}-${scheduledAt.toISOString()}`,
-          medicationId: medication.id,
-          alertAt: alertAt.toISOString(),
-          scheduledAt: scheduledAt.toISOString(),
-          title: medication.name,
-          body: `${prefix} · ${medication.dose || medication.notes || ''}`,
-          tag: `dose-${medication.id}-${time}`,
-          icon: medication.trackInjectionSite ? '/syringe-icon.svg' : '/medication-icon.png',
-        })
+        for (const advanceMinutes of reminderOffsets(medication.notifications)) {
+          const alertAt = new Date(scheduledAt.getTime() - advanceMinutes * MINUTE)
+          if (scheduledAt < now || alertAt < now || !isActiveAt(medication, scheduledAt) || recordFor(medication, scheduledAt)) continue
+          const prefix = formatReminderAdvance(advanceMinutes)
+          reminders.push({
+            id: `${medication.id}-${scheduledAt.toISOString()}-${advanceMinutes}`,
+            medicationId: medication.id,
+            alertAt: alertAt.toISOString(),
+            scheduledAt: scheduledAt.toISOString(),
+            advanceMinutes,
+            title: medication.name,
+            body: `${prefix} · ${medication.dose || medication.notes || ''}`,
+            tag: `dose-${medication.id}-${time}-${advanceMinutes}`,
+            icon: medication.trackInjectionSite ? '/syringe-icon.svg' : '/medication-icon.png',
+          })
+        }
       }
     }
   }
@@ -255,19 +327,29 @@ export function getRecentInjectionSites(medication, limit = 2) {
     .map((record) => record.injectionSite)
 }
 
-export function medicationCalendarMonths(medication, now = new Date()) {
-  const takenDates = medication.history.filter((record) => record.takenAt).map((record) => new Date(record.takenAt))
-  const counts = takenDates.reduce((days, date) => {
-    const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
-    days.set(key, (days.get(key) || 0) + 1)
-    return days
-  }, new Map())
-  const earliest = takenDates.reduce((first, date) => date < first ? date : first, now)
-  const cursor = new Date(now.getFullYear(), now.getMonth(), 1)
-  const firstMonth = new Date(earliest.getFullYear(), earliest.getMonth(), 1)
+export const INJECTION_SITE_CODES = {
+  'left-lower': 'LL',
+  'left-upper': 'LU',
+  'right-lower': 'RL',
+  'right-upper': 'RU',
+}
+
+export function medicationCalendarMonths(medication, now = new Date(), range = null) {
+  const history = medication.history || []
+  const recordDates = history
+    .map((record) => new Date(record.takenAt || record.scheduledAt || record.skippedAt))
+    .filter((date) => !Number.isNaN(date.getTime()))
+  const earliest = recordDates.reduce((first, date) => date < first ? date : first, now)
+  const firstMonth = range
+    ? new Date(now.getFullYear(), now.getMonth() - Math.max(0, range.pastMonths || 0), 1)
+    : new Date(earliest.getFullYear(), earliest.getMonth(), 1)
+  const lastMonth = range
+    ? new Date(now.getFullYear(), now.getMonth() + Math.max(0, range.futureMonths || 0), 1)
+    : new Date(now.getFullYear(), now.getMonth(), 1)
+  const cursor = new Date(firstMonth)
   const months = []
 
-  while (cursor >= firstMonth) {
+  while (cursor <= lastMonth) {
     const year = cursor.getFullYear()
     const month = cursor.getMonth()
     const totalDays = new Date(year, month + 1, 0).getDate()
@@ -277,12 +359,46 @@ export function medicationCalendarMonths(medication, now = new Date()) {
       leadingDays: new Date(year, month, 1).getDay(),
       days: Array.from({ length: totalDays }, (_, index) => {
         const day = index + 1
-        return { day, count: counts.get(`${year}-${month}-${day}`) || 0 }
+        const date = new Date(year, month, day, 12, 0, 0)
+        const key = localDateKey(date)
+        const records = history.filter((record) => {
+          const recordDate = new Date(record.takenAt || record.scheduledAt || record.skippedAt)
+          return !Number.isNaN(recordDate.getTime()) && localDateKey(recordDate) === key
+        })
+        const scheduled = Array.isArray(medication.times) && medication.createdAt
+          ? scheduledTimesForDay(medication, date)
+            .filter(({ scheduledAt }) => scheduledAt >= new Date(medication.createdAt) && isActiveAt(medication, scheduledAt))
+          : []
+        const unresolvedMisses = scheduled.filter(({ scheduledAt }) => (
+          !history.some((record) => (
+            record.scheduledAt === scheduledAt.toISOString() || record.originalScheduledAt === scheduledAt.toISOString()
+          )) && now - scheduledAt > ON_TIME_WINDOW
+        ))
+        const events = [
+          ...records.map((record) => ({
+            status: record.takenAt ? record.status || 'taken' : 'missed',
+            time: record.takenAt || record.skippedAt || record.scheduledAt,
+            injectionSite: record.injectionSite || null,
+          })),
+          ...unresolvedMisses.map(({ scheduledAt }) => ({
+            status: 'missed',
+            time: scheduledAt.toISOString(),
+            injectionSite: null,
+          })),
+        ]
+        return {
+          day,
+          dateKey: key,
+          count: records.filter((record) => record.takenAt).length,
+          missedCount: events.filter((event) => event.status === 'missed' || event.status === 'skipped').length,
+          injectionSites: records.filter((record) => record.injectionSite).map((record) => INJECTION_SITE_CODES[record.injectionSite]),
+          events,
+        }
       }),
     })
-    cursor.setMonth(cursor.getMonth() - 1)
+    cursor.setMonth(cursor.getMonth() + 1)
   }
-  return months
+  return range ? months : months.reverse()
 }
 
 export function adjustScheduleAfterDose(medication, dose, takenAt) {

@@ -38,13 +38,26 @@ export default function Profile({ onClose, themePreference, onThemeChange }) {
   const [done, setDone] = useState(false)
   const [busy, setBusy] = useState(false)
   const [testMsg, setTestMsg] = useState('')
+  const notificationsSupported = pushSupported()
+  const isIos = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent)
+  const isStandalone = typeof window !== 'undefined'
+    && (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true)
+  const notificationHelp = !notificationsSupported
+    ? isIos && !isStandalone
+      ? 'On iPhone or iPad, add Chrona to the Home Screen and open it there to enable notifications.'
+      : 'Web Push is not supported by this browser or device.'
+    : Notification.permission === 'denied'
+      ? 'Notifications are blocked. Allow them in this device’s browser or app settings, then re-register.'
+      : Notification.permission === 'granted'
+        ? 'Notifications are allowed on this device.'
+        : 'Tap “Send test notification” to request notification permission.'
 
   const sendTest = async () => {
     setTestMsg('Sending…')
     try {
       const ok = await subscribePush()
       if (!ok) {
-        setTestMsg('Enable notifications first (tap a set’s bell and allow).')
+        setTestMsg('Notifications were not allowed or are unavailable on this device.')
         return
       }
       const r = await api('/api/push/test', { method: 'POST' })
@@ -61,7 +74,7 @@ export default function Profile({ onClose, themePreference, onThemeChange }) {
       setTestMsg(
         ok
           ? 'Notifications re-registered. Try "Send test notification".'
-          : 'Enable notifications first (tap a set’s bell and allow).',
+          : 'Notifications were not allowed or are unavailable on this device.',
       )
     } catch (e) {
       setTestMsg(e.message || 'Could not re-register.')
@@ -120,20 +133,21 @@ export default function Profile({ onClose, themePreference, onThemeChange }) {
             </div>
             <p className="setting-help">System follows this device’s appearance setting.</p>
           </section>
-          {pushSupported() && (
-            <section className="notification-section">
-              <h3 className="section-title">Notifications</h3>
-              <div className="notification-actions">
-                <button type="button" className="logout-btn" onClick={sendTest} title="Send a test notification">
-                  Send test notification
-                </button>
-                <button type="button" className="logout-btn" onClick={reregister} title="Fix stuck notifications by re-registering this device">
-                  Re-register notifications
-                </button>
-              </div>
-              {testMsg && <p className="auth-success">{testMsg}</p>}
-            </section>
-          )}
+          <section className="notification-section">
+            <h3 className="section-title">Notifications</h3>
+            <p className="setting-help">{notificationHelp}</p>
+            <div className="notification-actions">
+              <button type="button" className="logout-btn" disabled={!notificationsSupported}
+                onClick={sendTest} title="Send a test notification">
+                Send test notification
+              </button>
+              <button type="button" className="logout-btn" disabled={!notificationsSupported}
+                onClick={reregister} title="Fix stuck notifications by re-registering this device">
+                Re-register notifications
+              </button>
+            </div>
+            {testMsg && <p className="auth-success">{testMsg}</p>}
+          </section>
           <h3 className="section-title">Change password</h3>
 
           <label className="auth-label">Current password</label>

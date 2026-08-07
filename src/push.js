@@ -10,6 +10,12 @@ export function pushSupported() {
 }
 
 let swReg = null
+const PUSH_SUBSCRIPTION_EVENT = 'chrona-push-subscription-change'
+
+function announcePushSubscriptionChange() {
+  window.dispatchEvent(new Event(PUSH_SUBSCRIPTION_EVENT))
+}
+
 export async function registerSW() {
   if (!('serviceWorker' in navigator)) return null
   if (swReg) return swReg
@@ -68,6 +74,7 @@ export async function subscribePush() {
     method: 'POST',
     body: JSON.stringify({ subscription: sub, tz }),
   })
+  announcePushSubscriptionChange()
   return true
 }
 
@@ -84,6 +91,7 @@ export async function reregisterPush() {
         body: JSON.stringify({ endpoint: old.endpoint }),
       }).catch(() => {})
       await old.unsubscribe().catch(() => {})
+      announcePushSubscriptionChange()
     }
   }
   return subscribePush()

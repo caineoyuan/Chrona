@@ -17,6 +17,7 @@ import ChronaIcon from '../components/Icon'
 import {
   adjustScheduleAfterDose,
   formatDateTime,
+  formatReminderAdvance,
   formatRelative,
   getActionableDoses,
   getDoseWindow,
@@ -25,12 +26,17 @@ import {
   getNextDose,
   getNextReminder,
   getRecentInjectionSites,
+  INJECTION_SITE_CODES,
   inventoryInteger,
   isOnTime,
+  localScheduleAnchor,
   medicationCalendarMonths,
   overrideScheduledTime,
   parsePastedTime,
+  reminderOffsets,
   timesForScheduleType,
+  toTwelveHourTime,
+  toTwentyFourHourTime,
   undoScheduleAfterDose,
   wakingHourSchedule,
 } from './lib'
@@ -38,14 +44,14 @@ import { scanMedicationLabel } from './labelOcr'
 import { searchOpenFda } from './openFda'
 import { playComplete, unlockSounds } from './sound'
 import { useMedications } from './storage'
-import { syncPushReminders } from './push'
+import { reregisterPush, subscribePush, syncPushReminders } from './push'
 
 const emptyForm = {
   name: '', dose: '', notes: '', times: ['08:00'],
   scheduleType: 'daily', intervalHours: 12, weeklyMode: 'interval', intervalDays: 7,
-  weekdays: [1], scheduleAnchorAt: null, scheduleChanges: [],
+  weekdays: [1], scheduleAnchorAt: null, scheduleChanges: [], hasStartDate: false, startDate: '',
   inventoryRemaining: '', inventoryUnit: 'doses', refillAt: 0,
-  notificationsEnabled: true, notifyMinutesBefore: 0, reminderTiming: 'preset',
+  notificationsEnabled: true, notifyMinutesBefore: [0], reminderTiming: 'preset', customReminderMinutes: null,
   customNotifyAmount: 2, customNotifyUnit: 'hours', trackInjectionSite: false,
 }
 
@@ -102,13 +108,22 @@ function formatTime(time) {
 
 function scheduleLabels(medication) {
   const schedule = { type: 'daily', intervalHours: 12, intervalDays: 7, weekdays: [], ...medication.schedule }
-  if (schedule.type === 'interval') return [`Every ${schedule.intervalHours} hours`]
-  if (schedule.type === 'day-interval') return [`Every ${schedule.intervalDays} days at ${formatTime(medication.times[0])}`]
-  if (schedule.type === 'weekly') {
+  let frequency
+  if (schedule.type === 'interval') frequency = `Every ${schedule.intervalHours} hours`
+  else if (schedule.type === 'day-interval') frequency = `Every ${schedule.intervalDays} days at ${formatTime(medication.times[0])}`
+  else if (schedule.type === 'weekly') {
     const frequency = schedule.weekdays.length > 1 ? `${schedule.weekdays.length}× weekly` : 'Weekly'
-    return [`${frequency} at ${formatTime(medication.times[0])}`]
+    const labels = [`${frequency} at ${formatTime(medication.times[0])}`]
+    if (schedule.startDate) labels.push(`Starts ${formatLocalDate(schedule.startDate)}`)
+    return labels
   }
-  return [`Daily at ${medication.times.map(formatTime).join(' and ')}`]
+  else frequency = `Daily at ${medication.times.map(formatTime).join(' and ')}`
+  return [frequency, ...(schedule.startDate ? [`Starts ${formatLocalDate(schedule.startDate)}`] : [])]
+}
+
+function formatLocalDate(value) {
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 function frequencyLabel(medication) {
@@ -191,28 +206,29 @@ function SmallIconButton({ label, name, size = 17, className = '', ...props }) {
 
 function TimeInput({ value, onChange, onComplete, label, compact = false }) {
   const inputs = useRef([])
-  const [parts, setParts] = useState(() => value.split(':'))
+  const [parts, setParts] = useState(() => toTwelveHourTime(value))
 
-  useEffect(() => setParts(value.split(':')), [value])
+  useEffect(() => setParts(toTwelveHourTime(value)), [value])
 
   const enterPart = (index, rawValue) => {
     const nextPart = rawValue.replace(/\D/g, '').slice(-2)
-    setParts((current) => current.map((part, partIndex) => partIndex === index ? nextPart : part))
+    const field = index === 0 ? 'hours' : 'minutes'
+    const nextParts = { ...parts, [field]: nextPart }
+    setParts(nextParts)
     if (nextPart.length !== 2) return
-    const hours = index === 0 ? Number(nextPart) : Number(parts[0])
-    const minutes = index === 1 ? Number(nextPart) : Number(parts[1])
-    if (hours > 23 || minutes > 59) {
-      setParts(value.split(':'))
+    const next = toTwentyFourHourTime(nextParts.hours, nextParts.minutes, nextParts.period)
+    if (!next) {
+      setParts(toTwelveHourTime(value))
       return
     }
-    const next = `${index === 0 ? nextPart : parts[0]}:${index === 1 ? nextPart : parts[1]}`
     onChange(next)
     if (index === 1) onComplete?.(next)
     inputs.current[index + 1]?.focus()
   }
 
   const handleKey = (event, index) => {
-    if (event.key === 'Backspace' && !parts[index] && index > 0) {
+    const part = index === 0 ? parts.hours : parts.minutes
+    if (event.key === 'Backspace' && !part && index > 0) {
       inputs.current[index - 1]?.focus()
     } else if (event.key === 'ArrowLeft') {
       event.preventDefault()
@@ -224,8 +240,9 @@ function TimeInput({ value, onChange, onComplete, label, compact = false }) {
   }
 
   const commitPartial = (index) => {
-    if (!parts[index] || parts[index].length === 2) return
-    enterPart(index, parts[index].padStart(2, '0'))
+    const part = index === 0 ? parts.hours : parts.minutes
+    if (!part || part.length === 2) return
+    enterPart(index, part.padStart(2, '0'))
   }
 
   const handlePaste = (event) => {
@@ -234,8 +251,17 @@ function TimeInput({ value, onChange, onComplete, label, compact = false }) {
     event.preventDefault()
     onChange(time)
     onComplete?.(time)
-    setParts(time.split(':'))
+    setParts(toTwelveHourTime(time))
     inputs.current[1]?.focus()
+  }
+
+  const selectPeriod = (period) => {
+    const nextParts = { ...parts, period }
+    setParts(nextParts)
+    const next = toTwentyFourHourTime(nextParts.hours, nextParts.minutes, period)
+    if (!next) return
+    onChange(next)
+    onComplete?.(next)
   }
 
   return (
@@ -243,12 +269,18 @@ function TimeInput({ value, onChange, onComplete, label, compact = false }) {
       {[0, 1].map((index) => (
         <span key={index}>
           {index === 1 && <b aria-hidden="true">:</b>}
-          <input ref={(element) => { inputs.current[index] = element }} value={parts[index]}
+          <input ref={(element) => { inputs.current[index] = element }} value={index === 0 ? parts.hours : parts.minutes}
             inputMode="numeric" pattern="[0-9]*" maxLength="2" aria-label={`${label}, ${index === 0 ? 'hours' : 'minutes'}`}
             onFocus={(event) => event.target.select()} onChange={(event) => enterPart(index, event.target.value)}
             onKeyDown={(event) => handleKey(event, index)} onBlur={() => commitPartial(index)} />
         </span>
       ))}
+      <span className="time-period" role="group" aria-label={`${label}, AM or PM`}>
+        {['AM', 'PM'].map((period) => (
+          <button type="button" className={parts.period === period ? 'active' : ''} aria-pressed={parts.period === period}
+            key={period} onClick={() => selectPeriod(period)}>{period}</button>
+        ))}
+      </span>
     </div>
   )
 }
@@ -361,9 +393,10 @@ function MedicationForm({ initial, onSave, onClose }) {
     const storedScheduleType = initial.schedule?.type ?? 'daily'
     const scheduleType = storedScheduleType === 'day-interval' ? 'weekly' : storedScheduleType
     const intervalHours = initial.schedule?.intervalHours ?? 12
-    const advanceMinutes = initial.notifications?.advanceMinutes ?? 0
-    const customReminder = !REMINDER_PRESET_VALUES.includes(advanceMinutes)
-    const customNotifyUnit = customReminder && advanceMinutes >= 60 && advanceMinutes % 60 === 0 ? 'hours' : 'minutes'
+    const storedAdvanceMinutes = reminderOffsets(initial.notifications)
+    const advanceMinutes = storedAdvanceMinutes.length ? storedAdvanceMinutes : [0]
+    const customReminder = advanceMinutes.find((value) => !REMINDER_PRESET_VALUES.includes(value)) ?? null
+    const customNotifyUnit = customReminder != null && customReminder >= 60 && customReminder % 60 === 0 ? 'hours' : 'minutes'
     return {
       ...emptyForm,
       name: initial.name, dose: initial.dose, notes: initial.notes,
@@ -375,14 +408,17 @@ function MedicationForm({ initial, onSave, onClose }) {
       weekdays: initial.schedule?.weekdays?.length ? initial.schedule.weekdays : [1],
       scheduleAnchorAt: initial.schedule?.anchorAt ?? null,
       scheduleChanges: initial.schedule?.changes ?? [],
+      hasStartDate: Boolean(initial.schedule?.startDate),
+      startDate: initial.schedule?.startDate ?? '',
       inventoryRemaining: initial.inventory?.remaining == null ? '' : inventoryInteger(initial.inventory.remaining),
       inventoryUnit: initial.inventory?.unit ?? 'doses',
       refillAt: inventoryInteger(initial.inventory?.refillAt),
       notificationsEnabled: initial.notifications?.enabled ?? true,
       notifyMinutesBefore: advanceMinutes,
-      reminderTiming: customReminder ? 'custom' : 'preset',
-      customNotifyAmount: customReminder ? advanceMinutes / (customNotifyUnit === 'hours' ? 60 : 1) : 2,
-      customNotifyUnit: customReminder ? customNotifyUnit : 'hours',
+      reminderTiming: customReminder != null ? 'custom' : 'preset',
+      customReminderMinutes: customReminder,
+      customNotifyAmount: customReminder != null ? customReminder / (customNotifyUnit === 'hours' ? 60 : 1) : 2,
+      customNotifyUnit: customReminder != null ? customNotifyUnit : 'hours',
       trackInjectionSite: initial.trackInjectionSite ?? false,
     }
   })
@@ -394,11 +430,53 @@ function MedicationForm({ initial, onSave, onClose }) {
     setForm((current) => ({
       ...current,
       reminderTiming: 'custom',
-      notifyMinutesBefore: Math.max(1, Number(current.customNotifyAmount) || 2) * (current.customNotifyUnit === 'hours' ? 60 : 1),
+      customReminderMinutes: Math.max(1, Number(current.customNotifyAmount) || 2) * (current.customNotifyUnit === 'hours' ? 60 : 1),
+      notifyMinutesBefore: reminderOffsets({
+        advanceMinutes: [
+          ...current.notifyMinutesBefore,
+          Math.max(1, Number(current.customNotifyAmount) || 2) * (current.customNotifyUnit === 'hours' ? 60 : 1),
+        ],
+      }),
     }))
     requestAnimationFrame(() => {
       customReminderInputRef.current?.focus()
       customReminderInputRef.current?.select()
+    })
+  }
+  const setCustomReminder = (amount, unit) => {
+    setForm((current) => {
+      const minutes = Math.max(1, Number(amount) || 1) * (unit === 'hours' ? 60 : 1)
+      return {
+        ...current,
+        customNotifyAmount: amount,
+        customNotifyUnit: unit,
+        customReminderMinutes: minutes,
+        notifyMinutesBefore: reminderOffsets({
+          advanceMinutes: [
+            ...current.notifyMinutesBefore.filter((value) => value !== current.customReminderMinutes),
+            minutes,
+          ],
+        }),
+      }
+    })
+  }
+  const removeCustomReminder = () => {
+    setForm((current) => {
+      const remaining = current.notifyMinutesBefore.filter((value) => value !== current.customReminderMinutes)
+      return {
+        ...current,
+        reminderTiming: 'preset',
+        notifyMinutesBefore: remaining.length ? remaining : [0],
+        customReminderMinutes: null,
+      }
+    })
+  }
+  const toggleReminder = (value) => {
+    setForm((current) => {
+      const selected = current.notifyMinutesBefore.includes(value)
+        ? current.notifyMinutesBefore.filter((option) => option !== value)
+        : reminderOffsets({ advanceMinutes: [...current.notifyMinutesBefore, value] })
+      return { ...current, notifyMinutesBefore: selected.length ? selected : [0] }
     })
   }
 
@@ -415,6 +493,8 @@ function MedicationForm({ initial, onSave, onClose }) {
   const submit = (event) => {
     event.preventDefault()
     if (!form.name.trim() || !form.times.length) return
+    const startAnchor = form.hasStartDate ? localScheduleAnchor(form.startDate, form.times[0]) : null
+    const selectedReminderOffsets = reminderOffsets({ advanceMinutes: form.notifyMinutesBefore })
     onSave({
       name: form.name.trim(), dose: form.dose.trim(), notes: form.notes.trim(), times: [...form.times].sort(),
       inventory: {
@@ -425,9 +505,7 @@ function MedicationForm({ initial, onSave, onClose }) {
       },
       notifications: {
         enabled: form.notificationsEnabled,
-        advanceMinutes: form.reminderTiming === 'custom'
-          ? Math.max(1, Number(form.customNotifyAmount) || 1) * (form.customNotifyUnit === 'hours' ? 60 : 1)
-          : Number(form.notifyMinutesBefore),
+        advanceMinutes: form.notificationsEnabled && !selectedReminderOffsets.length ? [0] : selectedReminderOffsets,
       },
       schedule: {
         type: form.scheduleType === 'weekly' && form.weeklyMode === 'interval' ? 'day-interval' : form.scheduleType,
@@ -436,10 +514,11 @@ function MedicationForm({ initial, onSave, onClose }) {
           : Math.max(1, Number(form.intervalHours) || 1),
         intervalDays: Math.min(30, Math.max(2, Number(form.intervalDays) || 7)),
         weekdays: form.weekdays,
+        startDate: form.hasStartDate ? form.startDate : null,
         anchorAt: form.scheduleType === 'interval'
           ? form.scheduleAnchorAt
           : form.scheduleType === 'weekly' && form.weeklyMode === 'interval'
-            ? form.scheduleAnchorAt || new Date().toISOString()
+            ? startAnchor?.toISOString() || form.scheduleAnchorAt || new Date().toISOString()
             : null,
         changes: form.scheduleChanges,
       },
@@ -617,6 +696,15 @@ function MedicationForm({ initial, onSave, onClose }) {
               ))}
             </div>}
             {form.scheduleType === 'daily' && <SmallIconButton label="Add time" name="plus" className="add-time-btn" onClick={() => setForm({ ...form, times: [...form.times, '12:00'] })} />}
+            <div className="start-date-options" role="radiogroup" aria-label="Medication start date">
+              <label><input type="radio" name="medication-start-date" checked={!form.hasStartDate}
+                onChange={() => setForm({ ...form, hasStartDate: false, startDate: '' })} />Start immediately</label>
+              <label><input type="radio" name="medication-start-date" checked={form.hasStartDate}
+                onChange={() => setForm({ ...form, hasStartDate: true })} />Add a start date</label>
+            </div>
+            {form.hasStartDate && <label className="start-date-field">Start date
+              <input type="date" required value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value, scheduleAnchorAt: null })} />
+            </label>}
           </fieldset>
 
           <fieldset className="form-section">
@@ -646,45 +734,29 @@ function MedicationForm({ initial, onSave, onClose }) {
             <div className="toggle-row"><span><strong>Dose reminders</strong><small>Notify from the medication schedule.</small></span>
               <Switch className="fluent-switch" checked={form.notificationsEnabled} onChange={(_, data) => setForm({ ...form, notificationsEnabled: data.checked })} aria-label="Dose reminders" /></div>
             {form.notificationsEnabled && <div className="reminder-timing">
-              <span className="field-label">Reminder timing</span>
-              <div className="reminder-option-grid" role="group" aria-label="Reminder timing">
+              <span className="field-label">Reminder times <small>Select all that apply</small></span>
+              <div className="reminder-option-grid" role="group" aria-label="Reminder times">
                 {REMINDER_PRESETS.map(({ value, label }) => <button type="button" key={value}
-                  className={!customReminderSelected && Number(form.notifyMinutesBefore) === value ? 'active' : ''}
-                  aria-pressed={!customReminderSelected && Number(form.notifyMinutesBefore) === value}
-                  onClick={() => setForm({ ...form, reminderTiming: 'preset', notifyMinutesBefore: value })}>{label}</button>)}
-                {customReminderSelected ? <input ref={customReminderInputRef} className="custom-reminder-input" type="number"
-                  min="1" max={form.customNotifyUnit === 'hours' ? '168' : '10080'} inputMode="numeric"
-                  aria-label={`Custom reminder amount in ${form.customNotifyUnit}`} value={form.customNotifyAmount}
-                  onFocus={(event) => event.target.select()}
-                  onChange={(event) => {
-                    const amount = event.target.value
-                    setForm({
-                      ...form,
-                      customNotifyAmount: amount,
-                      notifyMinutesBefore: amount === '' ? 0 : Math.max(1, Number(amount)) * (form.customNotifyUnit === 'hours' ? 60 : 1),
-                    })
-                  }}
-                  onBlur={() => {
-                    const amount = Math.max(1, Number(form.customNotifyAmount) || 1)
-                    setForm({
-                      ...form,
-                      customNotifyAmount: amount,
-                      notifyMinutesBefore: amount * (form.customNotifyUnit === 'hours' ? 60 : 1),
-                    })
-                  }} /> : <button type="button" onClick={activateCustomReminder}>Custom</button>}
+                  className={form.notifyMinutesBefore.includes(value) ? 'active' : ''}
+                  aria-pressed={form.notifyMinutesBefore.includes(value)}
+                  onClick={() => toggleReminder(value)}>{label}</button>)}
+                {customReminderSelected ? <div className="custom-reminder-control">
+                  <input ref={customReminderInputRef} className="custom-reminder-input" type="number"
+                    min="1" max={form.customNotifyUnit === 'hours' ? '168' : '10080'} inputMode="numeric"
+                    aria-label={`Custom reminder amount in ${form.customNotifyUnit}`} value={form.customNotifyAmount}
+                    onFocus={(event) => event.target.select()}
+                    onChange={(event) => setCustomReminder(event.target.value, form.customNotifyUnit)}
+                    onBlur={() => setCustomReminder(Math.max(1, Number(form.customNotifyAmount) || 1), form.customNotifyUnit)} />
+                  <SmallIconButton label="Remove custom reminder" name="close" className="small" onClick={removeCustomReminder} />
+                </div> : <button type="button" onClick={activateCustomReminder}>Custom</button>}
               </div>
               {customReminderSelected && <div className="custom-unit-picker" role="group" aria-label="Custom reminder unit">
                   {['minutes', 'hours'].map((unit) => <button type="button" key={unit}
                     className={form.customNotifyUnit === unit ? 'active' : ''} aria-pressed={form.customNotifyUnit === unit}
-                    onClick={() => {
-                      const amount = Math.max(1, Number(form.customNotifyAmount) || 1)
-                      setForm({
-                        ...form,
-                        customNotifyUnit: unit,
-                        notifyMinutesBefore: amount * (unit === 'hours' ? 60 : 1),
-                      })
-                    }}>{unit === 'minutes' ? 'Minutes' : 'Hours'}</button>)}
+                    onClick={() => setCustomReminder(Math.max(1, Number(form.customNotifyAmount) || 1), unit)}>
+                    {unit === 'minutes' ? 'Minutes' : 'Hours'}</button>)}
               </div>}
+              {!form.notifyMinutesBefore.length && <span className="field-message">Select at least one reminder time.</span>}
             </div>}
           </fieldset>
           </>}
@@ -832,9 +904,21 @@ function InjectionSiteMap({ medication, onSelect, compact = false }) {
   )
 }
 
-function MedicationDetails({ medication, now, onClose, onEdit }) {
+function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory }) {
+  const [pastMonths, setPastMonths] = useState(6)
+  const [futureMonths, setFutureMonths] = useState(6)
+  const [selectedDate, setSelectedDate] = useState(null)
+  const calendarScrollRef = useRef(null)
+  const currentMonthKey = `${now.getFullYear()}-${now.getMonth()}`
   const next = getNextDose([medication], now)
-  const calendarMonths = medicationCalendarMonths(medication, now)
+  const calendarMonths = medicationCalendarMonths(medication, now, { pastMonths, futureMonths })
+
+  useEffect(() => {
+    const container = calendarScrollRef.current
+    const currentMonth = container?.querySelector(`[data-month="${currentMonthKey}"]`)
+    if (container && currentMonth) container.scrollLeft = currentMonth.offsetLeft - container.offsetLeft
+  }, [currentMonthKey, medication.id])
+
   return (
     <div className="modal-backdrop details-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <article className="modal details-modal">
@@ -848,30 +932,54 @@ function MedicationDetails({ medication, now, onClose, onEdit }) {
         <div className="detail-list">
           <div><span>Schedule</span><strong>{scheduleLabels(medication).join(' · ')}</strong></div>
           <div><span>Next dose</span><strong>{medication.paused ? 'Paused' : next ? formatDateTime(next.scheduledAt) : '—'}</strong></div>
-          {medication.inventory?.remaining != null && <div><span>Inventory</span><strong>{inventoryInteger(medication.inventory.remaining)} {medication.inventory.unit}</strong></div>}
+          <div className="detail-inventory"><span>Inventory</span>
+            <strong>{medication.inventory?.remaining == null ? 'Not tracked' : `${inventoryInteger(medication.inventory.remaining)} ${medication.inventory.unit}`}</strong>
+            <div className="detail-inventory-controls">
+              <SmallIconButton label={`Decrease ${medication.name} inventory`} name="chevron-down" className="inventory-adjust"
+                onClick={() => onAdjustInventory(medication, -1)} />
+              <SmallIconButton label={`Increase ${medication.name} inventory`} name="chevron-up" className="inventory-adjust"
+                onClick={() => onAdjustInventory(medication, 1)} />
+            </div>
+          </div>
         </div>
         {medication.trackInjectionSite && <section className="detail-site-map">
           <InjectionSiteMap medication={medication} compact />
         </section>}
         {medication.notes && <section className="detail-instructions"><span>Instructions</span><p>{medication.notes}</p></section>}
         <section className="medication-calendar">
-          <div className="calendar-heading"><span className="eyebrow">Dose history</span></div>
-          {calendarMonths.map((month) => (
-            <div className="calendar-month" key={month.key}>
-              <h4>{month.label}</h4>
-              <div className="calendar-grid">
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span className="calendar-weekday" key={day}>{day.slice(0, 1)}</span>)}
-                {Array.from({ length: month.leadingDays }, (_, index) => <span className="calendar-blank" key={`blank-${index}`} />)}
-                {month.days.map(({ day, count }) => (
-                  <div className={`calendar-day ${count ? 'taken' : ''}`} key={day}
-                    aria-label={`${month.label} ${day}${count ? `, taken ${count} ${count === 1 ? 'time' : 'times'}` : ''}`}>
-                    <span>{day}</span>
-                    {count > 1 && <small>{count} times</small>}
-                  </div>
-                ))}
+          <div className="calendar-heading"><span className="eyebrow">Dose history</span><small>Scroll for past and future months</small></div>
+          <button type="button" className="calendar-load" onClick={() => setPastMonths((months) => months + 12)}>Load earlier months</button>
+          <div className="calendar-scroll" ref={calendarScrollRef}>
+            {calendarMonths.map((month) => (
+              <div className="calendar-month" data-month={month.key} key={month.key}>
+                <h4>{month.label}</h4>
+                <div className="calendar-grid">
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span className="calendar-weekday" key={day}>{day.slice(0, 1)}</span>)}
+                  {Array.from({ length: month.leadingDays }, (_, index) => <span className="calendar-blank" key={`blank-${index}`} />)}
+                  {month.days.map((date) => {
+                    const selected = selectedDate?.dateKey === date.dateKey
+                    const label = `${month.label} ${date.day}${date.count ? `, taken ${date.count} ${date.count === 1 ? 'time' : 'times'}` : ''}${date.missedCount ? `, missed ${date.missedCount}` : ''}`
+                    return <div className={`calendar-day ${date.count ? 'taken' : ''} ${date.missedCount ? 'missed' : ''}`} key={date.day}>
+                      <button type="button" aria-label={label} aria-expanded={selected}
+                        onClick={() => setSelectedDate(selected ? null : { ...date, monthLabel: month.label })}>{date.day}</button>
+                      {date.count > 1 && <small>{date.count} times</small>}
+                    </div>
+                  })}
+                </div>
+                {selectedDate?.monthLabel === month.label && <div className="calendar-info-balloon" role="status">
+                  <strong>{selectedDate.monthLabel} {selectedDate.day}</strong>
+                  {selectedDate.events.length ? selectedDate.events.map((event, index) => (
+                    <span key={`${event.time}-${index}`}>
+                      {event.status === 'missed' || event.status === 'skipped' ? 'Missed' : 'Taken'}{' '}
+                      {new Date(event.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                      {event.injectionSite ? ` · ${INJECTION_SITE_CODES[event.injectionSite]}` : ''}
+                    </span>
+                  )) : <span>No recorded dose.</span>}
+                </div>}
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+          <button type="button" className="calendar-load" onClick={() => setFutureMonths((months) => months + 12)}>Load later months</button>
         </section>
       </article>
     </div>
@@ -904,13 +1012,18 @@ function App({ colorScheme = 'dark' }) {
   const [viewingMedication, setViewingMedication] = useState(null)
   const [confirmingDelete, setConfirmingDelete] = useState(null)
   const [hasPushSubscription, setHasPushSubscription] = useState(false)
+  const [deviceTimeZone, setDeviceTimeZone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
+  const [pushStatus, setPushStatus] = useState('')
 
   useEffect(() => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
-    navigator.serviceWorker.ready
+    const refreshSubscription = () => navigator.serviceWorker.ready
       .then((registration) => registration.pushManager.getSubscription())
       .then((subscription) => setHasPushSubscription(Boolean(subscription)))
       .catch((error) => console.error('Could not read the push subscription:', error))
+    refreshSubscription()
+    window.addEventListener('chrona-push-subscription-change', refreshSubscription)
+    return () => window.removeEventListener('chrona-push-subscription-change', refreshSubscription)
   }, [])
 
   useEffect(() => {
@@ -919,11 +1032,14 @@ function App({ colorScheme = 'dark' }) {
       syncPushReminders(medications).catch((error) => console.error('Could not sync medication reminders:', error))
     }, 500)
     return () => clearTimeout(timer)
-  }, [hasPushSubscription, medications])
+  }, [deviceTimeZone, hasPushSubscription, medications])
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30_000)
-    const refresh = () => setNow(new Date())
+    const refresh = () => {
+      setNow(new Date())
+      setDeviceTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
+    }
     window.addEventListener('focus', refresh)
     return () => { clearInterval(timer); window.removeEventListener('focus', refresh) }
   }, [])
@@ -952,9 +1068,9 @@ function App({ colorScheme = 'dark' }) {
     const delay = reminder.alertAt - Date.now()
     if (delay < 0 || delay > 2_147_483_647) return
     const timer = setTimeout(async () => {
-      const lead = reminder.medication.notifications?.advanceMinutes || 0
-      const prefix = lead ? `${lead} minutes until the scheduled dose` : 'Scheduled dose'
-      const options = { body: `${prefix} · ${reminder.medication.dose || reminder.medication.notes || ''}`, icon: reminder.medication.trackInjectionSite ? '/syringe-icon.svg' : '/medication-icon.png', tag: `dose-${reminder.medication.id}-${reminder.time}` }
+      const lead = reminder.advanceMinutes
+      const prefix = formatReminderAdvance(lead)
+      const options = { body: `${prefix} · ${reminder.medication.dose || reminder.medication.notes || ''}`, icon: reminder.medication.trackInjectionSite ? '/syringe-icon.svg' : '/medication-icon.png', tag: `dose-${reminder.medication.id}-${reminder.time}-${lead}` }
       const registration = await navigator.serviceWorker?.ready
       if (registration) registration.showNotification(reminder.medication.name, options)
       else new Notification(reminder.medication.name, options)
@@ -962,6 +1078,27 @@ function App({ colorScheme = 'dark' }) {
     }, delay)
     return () => clearTimeout(timer)
   }, [hasPushSubscription, reminder])
+
+  const configurePush = async (force = false) => {
+    const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
+    if (isIos && !standalone) {
+      setPushStatus('On iPhone or iPad, add Chrona to the Home Screen, then open it there to enable reminders.')
+      return
+    }
+    const currentTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+    setDeviceTimeZone(currentTimeZone)
+    setPushStatus(force ? 'Re-registering notifications…' : 'Enabling notifications…')
+    try {
+      const enabled = force ? await reregisterPush(medications) : await subscribePush(medications)
+      setHasPushSubscription(enabled)
+      setPushStatus(enabled
+        ? `Medication reminders are enabled in ${currentTimeZone}.`
+        : 'Notifications are unavailable or were not allowed on this device.')
+    } catch (error) {
+      setPushStatus(error.message || 'Could not configure notifications on this device.')
+    }
+  }
 
   const markTaken = (dose) => {
     if (dose.medication.trackInjectionSite) {
@@ -1141,6 +1278,15 @@ function App({ colorScheme = 'dark' }) {
               </div>
               <ProgressRing next={next} now={now} />
             </div>
+            <section className="notification-setup" aria-label="Medication notification settings">
+              <span><strong>Device reminders</strong><small>{hasPushSubscription
+                ? `Enabled in ${deviceTimeZone}`
+                : 'Enable background reminders on this device.'}</small></span>
+              <button type="button" className="secondary-btn" onClick={() => configurePush(hasPushSubscription)}>
+                {hasPushSubscription ? 'Re-register' : 'Enable'}
+              </button>
+              {pushStatus && <p>{pushStatus}</p>}
+            </section>
 
             {todayDoses.length ? (
               <div className="card-wrap schedule-card-wrap"><div className="card dose-list">{todayDoses.map((dose) => <DoseCard key={dose.key} dose={dose}
@@ -1179,8 +1325,11 @@ function App({ colorScheme = 'dark' }) {
                 const addedDate = new Date(med.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
                 const lowStock = med.inventory?.remaining != null
                   && inventoryInteger(med.inventory.remaining) <= inventoryInteger(med.inventory.refillAt)
-                return <div className={`card-wrap ${index % 2 ? 'purple' : ''} ${med.paused ? 'paused' : ''}`} key={med.id}><article className="card med-card">
-                  <div className="med-card-head"><div className="med-symbol"><Icon name={med.trackInjectionSite ? 'syringe' : 'pill'} size={20} /></div><div className="medication-actions">
+                return <div className={`card-wrap ${index % 2 ? 'purple' : ''} ${med.paused ? 'paused' : ''}`} key={med.id}><article
+                  className="card med-card clickable" tabIndex="0" aria-label={`View ${med.name} details`}
+                  onClick={() => setViewingMedication(med)}
+                  onKeyDown={(event) => { if (event.currentTarget === event.target && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setViewingMedication(med) } }}>
+                  <div className="med-card-head"><div className="med-symbol"><Icon name={med.trackInjectionSite ? 'syringe' : 'pill'} size={20} /></div><div className="medication-actions" onClick={(event) => event.stopPropagation()}>
                     <SmallIconButton label={`${med.paused ? 'Resume' : 'Pause'} ${med.name}`} name={med.paused ? 'play' : 'pause'} className={med.paused ? 'resume' : ''} onClick={() => togglePause(med)} />
                     <SmallIconButton label={`Edit ${med.name}`} name="edit" onClick={() => setEditing(med)} />
                     <SmallIconButton label={`Delete ${med.name}`} name="trash" className="danger" onClick={() => setConfirmingDelete(med)} />
@@ -1190,7 +1339,7 @@ function App({ colorScheme = 'dark' }) {
                   {med.notes && <div className="notes"><span>How to take</span><p>{med.notes}</p></div>}
                   <div className={`inventory-row ${lowStock ? 'low' : ''}`}>
                     <span>Inventory<strong>{med.inventory?.remaining == null ? 'Not tracked' : `${inventoryInteger(med.inventory.remaining)} ${med.inventory.unit}`}</strong></span>
-                    <div className="inventory-controls">
+                    <div className="inventory-controls" onClick={(event) => event.stopPropagation()}>
                       <SmallIconButton label={`Decrease ${med.name} inventory`} name="chevron-down" className="inventory-adjust" onClick={() => adjustInventory(med, -1)} />
                       <SmallIconButton label={`Increase ${med.name} inventory`} name="chevron-up" className="inventory-adjust" onClick={() => adjustInventory(med, 1)} />
                     </div>
@@ -1214,7 +1363,11 @@ function App({ colorScheme = 'dark' }) {
         </button>
       </nav>
       {(showForm || editing) && <MedicationForm initial={editing} onSave={saveMedication} onClose={() => { setShowForm(false); setEditing(null) }} />}
-      {viewingMedication && <MedicationDetails medication={viewingMedication} now={now} onClose={() => setViewingMedication(null)}
+      {viewingMedication && <MedicationDetails
+        medication={medications.find((medication) => medication.id === viewingMedication.id) || viewingMedication}
+        now={now}
+        onClose={() => setViewingMedication(null)}
+        onAdjustInventory={adjustInventory}
         onEdit={(medication) => { setViewingMedication(null); setEditing(medication) }} />}
       {pendingDose && <InjectionSitePicker medication={pendingDose.medication} onSelect={(site) => completeTaken(pendingDose, site)} onClose={() => setPendingDose(null)} />}
       {confirmingDelete && (

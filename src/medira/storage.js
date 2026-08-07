@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, isLocalPreview } from '../auth.jsx'
-import { inventoryInteger } from './lib'
+import { inventoryInteger, reminderOffsets } from './lib'
 
 const STORAGE_KEY = 'medira-medications-v1'
 const LEGACY_STORAGE_KEY = 'dosewell-medications-v1'
@@ -90,6 +90,12 @@ function normalizeMedication(medication) {
     refillAt: 0,
     ...medication.inventory,
   }
+  const notifications = {
+    enabled: true,
+    advanceMinutes: [0],
+    ...medication.notifications,
+  }
+  const advanceMinutes = reminderOffsets(notifications)
   return {
     ...medication,
     paused: medication.paused ?? false,
@@ -101,15 +107,15 @@ function normalizeMedication(medication) {
       refillAt: inventoryInteger(inventory.refillAt),
     },
     notifications: {
-      enabled: true,
-      advanceMinutes: 0,
-      ...medication.notifications,
+      ...notifications,
+      advanceMinutes: notifications.enabled !== false && !advanceMinutes.length ? [0] : advanceMinutes,
     },
     schedule: {
       type: 'daily',
       intervalHours: 12,
       weekdays: [],
       anchorAt: null,
+      startDate: null,
       changes: [],
       ...medication.schedule,
     },

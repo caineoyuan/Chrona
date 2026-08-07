@@ -10,11 +10,16 @@ import {
   getRecentDoses,
   getRecentInjectionSites,
   getUpcomingReminders,
+  INJECTION_SITE_CODES,
   inventoryInteger,
+  localScheduleAnchor,
   medicationCalendarMonths,
   overrideScheduledTime,
   parsePastedTime,
+  reminderOffsets,
   timesForScheduleType,
+  toTwelveHourTime,
+  toTwentyFourHourTime,
   undoScheduleAfterDose,
   updateTimeDigit,
   wakingHourSchedule,
@@ -53,8 +58,18 @@ test('updates valid time digits while preserving the colon', () => {
 test('accepts only complete valid pasted times', () => {
   assert.equal(parsePastedTime('09:30'), '09:30')
   assert.equal(parsePastedTime('2359'), '23:59')
+  assert.equal(parsePastedTime('9:30 PM'), '21:30')
   assert.equal(parsePastedTime('25:00'), null)
   assert.equal(parsePastedTime('930'), null)
+})
+
+test('converts AM and PM schedule times without changing local clock intent', () => {
+  assert.deepEqual(toTwelveHourTime('00:15'), { hours: '12', minutes: '15', period: 'AM' })
+  assert.deepEqual(toTwelveHourTime('12:30'), { hours: '12', minutes: '30', period: 'PM' })
+  assert.deepEqual(toTwelveHourTime('21:45'), { hours: '09', minutes: '45', period: 'PM' })
+  assert.equal(toTwentyFourHourTime('12', '15', 'AM'), '00:15')
+  assert.equal(toTwentyFourHourTime('12', '30', 'PM'), '12:30')
+  assert.equal(toTwentyFourHourTime('9', '45', 'PM'), '21:45')
 })
 
 test('fills interval schedules across waking hours', () => {
@@ -92,6 +107,18 @@ test('builds separate medication schedules for today and tomorrow', () => {
   assert.deepEqual(today.map((dose) => dose.medication.id), ['testosterone'])
   assert.deepEqual(tomorrow.map((dose) => dose.medication.id), ['testosterone', 'tomorrow-only'])
   assert.deepEqual(tomorrow.map((dose) => dose.time), ['08:00', '09:30'])
+})
+
+test('does not schedule medication before its selected local start date', () => {
+  const med = medication({ type: 'daily', startDate: '2026-08-08' }, ['09:00'])
+  assert.equal(getDosesForDay([med], new Date(2026, 7, 7, 12)).length, 0)
+  assert.equal(getDosesForDay([med], new Date(2026, 7, 8, 12)).length, 1)
+
+  const anchor = localScheduleAnchor('2026-08-08', '09:00')
+  assert.equal(anchor.getFullYear(), 2026)
+  assert.equal(anchor.getMonth(), 7)
+  assert.equal(anchor.getDate(), 8)
+  assert.equal(anchor.getHours(), 9)
 })
 
 test('schedules medication every N days from its anchor date', () => {
@@ -291,7 +318,7 @@ test('builds current and past calendar months with taken counts', () => {
   const med = {
     history: [
       { takenAt: '2026-07-04T09:00:00' },
-      { takenAt: '2026-08-06T09:00:00' },
+      { takenAt: '2026-08-06T09:00:00', injectionSite: 'left-lower' },
       { takenAt: '2026-08-06T15:00:00' },
       { skippedAt: '2026-08-05T09:00:00', status: 'skipped' },
     ],
@@ -300,19 +327,34 @@ test('builds current and past calendar months with taken counts', () => {
 
   assert.equal(months.length, 2)
   assert.equal(months[0].days.find(({ day }) => day === 6).count, 2)
-  assert.equal(months[0].days.find(({ day }) => day === 5).count, 0)
+  assert.equal(months[0].days.find(({ day }) => day === 5).missedCount, 1)
+  assert.deepEqual(months[0].days.find(({ day }) => day === 6).injectionSites, ['LL'])
   assert.equal(months[1].days.find(({ day }) => day === 4).count, 1)
+  assert.equal(INJECTION_SITE_CODES['left-upper'], 'LU')
+  assert.equal(INJECTION_SITE_CODES['right-lower'], 'RL')
+  assert.equal(INJECTION_SITE_CODES['right-upper'], 'RU')
 })
 
-test('builds future push reminders without completed or disabled doses', () => {
+test('builds scrollable medication history ranges into past and future months', () => {
+  const med = { history: [] }
+  const months = medicationCalendarMonths(med, new Date(2026, 7, 10, 12), { pastMonths: 2, futureMonths: 3 })
+  assert.equal(months.length, 6)
+  assert.equal(months[0].label, 'June 2026')
+  assert.equal(months.at(-1).label, 'November 2026')
+})
+
+test('builds multiple future push reminders without completed or disabled doses', () => {
   const enabled = medication({ type: 'daily', intervalHours: 24, weekdays: [], anchorAt: null, changes: [] }, ['11:00'])
-  enabled.notifications = { enabled: true, advanceMinutes: 15 }
+  enabled.notifications = { enabled: true, advanceMinutes: [0, 15] }
   enabled.trackInjectionSite = true
   const disabled = { ...medication({ type: 'daily' }, ['12:00']), id: 'disabled', notifications: { enabled: false } }
   const reminders = getUpcomingReminders([enabled, disabled], new Date('2026-08-06T10:00:00'), 0)
 
-  assert.equal(reminders.length, 1)
+  assert.equal(reminders.length, 2)
+  assert.deepEqual(reminders.map(({ advanceMinutes }) => advanceMinutes), [15, 0])
   assert.equal(new Date(reminders[0].scheduledAt) - new Date(reminders[0].alertAt), 15 * 60 * 1000)
   assert.match(reminders[0].body, /15 minutes/)
   assert.equal(reminders[0].icon, '/syringe-icon.svg')
+  assert.notEqual(reminders[0].tag, reminders[1].tag)
+  assert.deepEqual(reminderOffsets({ advanceMinutes: [15, 0, 15] }), [0, 15])
 })
