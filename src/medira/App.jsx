@@ -37,6 +37,7 @@ import {
   parsePastedTime,
   reminderOffsets,
   timesForScheduleType,
+  timePartInput,
   toTwelveHourTime,
   toTwentyFourHourTime,
   undoScheduleAfterDose,
@@ -213,22 +214,34 @@ function SmallIconButton({ label, name, size = 17, className = '', ...props }) {
 
 function TimeInput({ value, onChange, onComplete, label, compact = false }) {
   const inputs = useRef([])
+  const startsNewEntry = useRef([false, false])
   const [parts, setParts] = useState(() => toTwelveHourTime(value))
+  const partsRef = useRef(parts)
 
-  useEffect(() => setParts(toTwelveHourTime(value)), [value])
+  const updateParts = (nextParts) => {
+    partsRef.current = nextParts
+    setParts(nextParts)
+  }
+
+  useEffect(() => {
+    const nextParts = toTwelveHourTime(value)
+    partsRef.current = nextParts
+    setParts(nextParts)
+  }, [value])
 
   const enterPart = (index, rawValue) => {
-    const nextPart = rawValue.replace(/\D/g, '').slice(-2)
+    const nextPart = timePartInput(rawValue, startsNewEntry.current[index])
+    if (nextPart) startsNewEntry.current[index] = false
     const field = index === 0 ? 'hours' : 'minutes'
-    const nextParts = { ...parts, [field]: nextPart }
-    setParts(nextParts)
+    const nextParts = { ...partsRef.current, [field]: nextPart }
+    updateParts(nextParts)
     if (nextPart.length !== 2) {
       requestAnimationFrame(() => inputs.current[index]?.setSelectionRange(nextPart.length, nextPart.length))
       return
     }
     const next = toTwentyFourHourTime(nextParts.hours, nextParts.minutes, nextParts.period)
     if (!next) {
-      setParts(toTwelveHourTime(value))
+      updateParts(toTwelveHourTime(value))
       return
     }
     onChange(next)
@@ -237,7 +250,7 @@ function TimeInput({ value, onChange, onComplete, label, compact = false }) {
   }
 
   const handleKey = (event, index) => {
-    const part = index === 0 ? parts.hours : parts.minutes
+    const part = index === 0 ? partsRef.current.hours : partsRef.current.minutes
     if (event.key === 'Backspace' && !part && index > 0) {
       inputs.current[index - 1]?.focus()
     } else if (event.key === 'ArrowLeft') {
@@ -250,7 +263,7 @@ function TimeInput({ value, onChange, onComplete, label, compact = false }) {
   }
 
   const commitPartial = (index) => {
-    const part = index === 0 ? parts.hours : parts.minutes
+    const part = index === 0 ? partsRef.current.hours : partsRef.current.minutes
     if (!part || part.length === 2) return
     enterPart(index, part.padStart(2, '0'))
   }
@@ -261,13 +274,13 @@ function TimeInput({ value, onChange, onComplete, label, compact = false }) {
     event.preventDefault()
     onChange(time)
     onComplete?.(time)
-    setParts(toTwelveHourTime(time))
+    updateParts(toTwelveHourTime(time))
     inputs.current[1]?.focus()
   }
 
   const selectPeriod = (period) => {
-    const nextParts = { ...parts, period }
-    setParts(nextParts)
+    const nextParts = { ...partsRef.current, period }
+    updateParts(nextParts)
     const next = toTwentyFourHourTime(nextParts.hours, nextParts.minutes, period)
     if (!next) return
     onChange(next)
@@ -281,7 +294,10 @@ function TimeInput({ value, onChange, onComplete, label, compact = false }) {
           {index === 1 && <b aria-hidden="true">:</b>}
           <input ref={(element) => { inputs.current[index] = element }} value={index === 0 ? parts.hours : parts.minutes}
             inputMode="numeric" pattern="[0-9]*" maxLength="2" aria-label={`${label}, ${index === 0 ? 'hours' : 'minutes'}`}
-            onFocus={(event) => event.target.select()} onChange={(event) => enterPart(index, event.target.value)}
+            onFocus={(event) => {
+              startsNewEntry.current[index] = true
+              event.target.select()
+            }} onChange={(event) => enterPart(index, event.target.value)}
             onKeyDown={(event) => handleKey(event, index)} onBlur={() => commitPartial(index)} />
         </span>
       ))}

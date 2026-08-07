@@ -19,6 +19,7 @@ import {
   overrideTakenDate,
   parsePastedTime,
   reminderOffsets,
+  timePartInput,
   timesForScheduleType,
   toTwelveHourTime,
   toTwentyFourHourTime,
@@ -72,6 +73,14 @@ test('converts AM and PM schedule times without changing local clock intent', ()
   assert.equal(toTwentyFourHourTime('12', '15', 'AM'), '00:15')
   assert.equal(toTwentyFourHourTime('12', '30', 'PM'), '12:30')
   assert.equal(toTwentyFourHourTime('9', '45', 'PM'), '21:45')
+})
+
+test('starts a fresh time part when iOS retains the selected value', () => {
+  assert.equal(timePartInput('081', true), '1')
+  assert.equal(timePartInput('1', false), '1')
+  assert.equal(timePartInput('10', false), '10')
+  assert.equal(timePartInput('11', false), '11')
+  assert.equal(timePartInput('12', false), '12')
 })
 
 test('fills interval schedules across waking hours', () => {

@@ -50,6 +50,11 @@ export function toTwentyFourHourTime(hours, minutes, period) {
   return `${String(normalizedHours).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
 }
 
+export function timePartInput(rawValue, startsNewEntry = false) {
+  const digits = rawValue.replace(/\D/g, '')
+  return startsNewEntry ? digits.slice(-1) : digits.slice(-2)
+}
+
 export function wakingHourSchedule(intervalHours) {
   const interval = Math.min(12, Math.max(3, Math.round(Number(intervalHours) || 3)))
   const times = []
