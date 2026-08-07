@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, isLocalPreview } from '../auth.jsx'
-import { inventoryInteger, reminderOffsets } from './lib'
+import { inventoryInteger, reminderOffsets, takenRecordStatus } from './lib'
 
 const STORAGE_KEY = 'medira-medications-v1'
 const LEGACY_STORAGE_KEY = 'dosewell-medications-v1'
@@ -98,6 +98,7 @@ function normalizeMedication(medication) {
   const advanceMinutes = reminderOffsets(notifications)
   return {
     ...medication,
+    history: (medication.history || []).map((record) => ({ ...record, status: takenRecordStatus(record) })),
     paused: medication.paused ?? false,
     pausePeriods: medication.pausePeriods ?? [],
     inventory: {

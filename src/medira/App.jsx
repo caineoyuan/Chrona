@@ -315,11 +315,14 @@ function TimeInput({ value, onChange, onComplete, label, compact = false }) {
 }
 
 function DoseTimeEditor({ dose, onChange }) {
-  const initial = dose.scheduledAt.toTimeString().slice(0, 5)
+  const takenAt = dose.record?.takenAt ? new Date(dose.record.takenAt) : null
+  const displayedAt = takenAt && !Number.isNaN(takenAt.getTime()) ? takenAt : dose.scheduledAt
+  const initial = displayedAt.toTimeString().slice(0, 5)
   const [value, setValue] = useState(initial)
+  useEffect(() => setValue(initial), [initial])
   return (
     <div className="dose-time-editor" onClick={(event) => event.stopPropagation()}>
-      <TimeInput compact label={`Scheduled time for ${dose.medication.name}`} value={value}
+      <TimeInput compact label={`${takenAt ? 'Taken' : 'Scheduled'} time for ${dose.medication.name}`} value={value}
         onChange={setValue} onComplete={(time) => onChange(dose, time)} />
     </div>
   )

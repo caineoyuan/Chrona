@@ -1,6 +1,8 @@
 const MINUTE = 60 * 1000
 const DAY = 24 * 60 * MINUTE
-export const ON_TIME_WINDOW = 30 * MINUTE
+export const ON_TIME_WINDOW = 10 * MINUTE
+const MISSED_WINDOW = 30 * MINUTE
+const SCHEDULE_SHIFT_WINDOW = 30 * MINUTE
 
 export function inventoryInteger(value, fallback = 0) {
   const number = Number(value)
@@ -416,7 +418,7 @@ export function medicationCalendarMonths(medication, now = new Date(), range = n
         const unresolvedMisses = scheduled.filter(({ scheduledAt }) => (
           !history.some((record) => (
             record.scheduledAt === scheduledAt.toISOString() || record.originalScheduledAt === scheduledAt.toISOString()
-          )) && now - scheduledAt > ON_TIME_WINDOW
+          )) && now - scheduledAt > MISSED_WINDOW
         ))
         const events = [
           ...records.map((record) => ({
@@ -452,7 +454,7 @@ export function adjustScheduleAfterDose(medication, dose, takenAt) {
   shiftedAt.setSeconds(0, 0)
   const reanchorDayInterval = schedule.type === 'day-interval' && shiftedAt.getTime() !== dose.scheduledAt.getTime()
   const shifted = reanchorDayInterval
-    || (takenAt - dose.scheduledAt > ON_TIME_WINDOW && (schedule.type === 'daily' || schedule.type === 'interval'))
+    || (takenAt - dose.scheduledAt > SCHEDULE_SHIFT_WINDOW && (schedule.type === 'daily' || schedule.type === 'interval'))
   return {
     shifted,
     scheduledAt: shifted ? shiftedAt : dose.scheduledAt,
@@ -578,11 +580,19 @@ export function isOnTime(scheduledAt, takenAt) {
   return Math.abs(takenAt - scheduledAt) <= ON_TIME_WINDOW
 }
 
+export function takenRecordStatus(record) {
+  if (record.status === 'skipped' || !record.takenAt) return record.status
+  const scheduledAt = new Date(record.originalScheduledAt || record.scheduledAt)
+  const takenAt = new Date(record.takenAt)
+  if (Number.isNaN(scheduledAt.getTime()) || Number.isNaN(takenAt.getTime())) return record.status
+  return isOnTime(scheduledAt, takenAt) ? 'on-time' : 'late'
+}
+
 export function adherenceFor(doses, now = new Date()) {
   const eligible = doses.filter((dose) => dose.scheduledAt <= now)
   const onTime = eligible.filter((dose) => dose.record?.status === 'on-time').length
   const late = eligible.filter((dose) => dose.record?.status === 'late').length
-  const missed = eligible.filter((dose) => dose.record?.status === 'skipped' || (!dose.record && now - dose.scheduledAt > ON_TIME_WINDOW)).length
+  const missed = eligible.filter((dose) => dose.record?.status === 'skipped' || (!dose.record && now - dose.scheduledAt > MISSED_WINDOW)).length
   const total = onTime + late + missed
   const taken = onTime + late
   return {

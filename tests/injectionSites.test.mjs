@@ -15,6 +15,7 @@ import {
   INJECTION_SITE_CODES,
   inventoryInteger,
   isFutureLocalDate,
+  isOnTime,
   localScheduleAnchor,
   medicationCalendarMonths,
   overrideScheduledTime,
@@ -22,6 +23,7 @@ import {
   parsePastedTime,
   reminderOffsets,
   removeTakenHistoryRecord,
+  takenRecordStatus,
   timePartInput,
   timesForScheduleType,
   toTwelveHourTime,
@@ -76,6 +78,19 @@ test('converts AM and PM schedule times without changing local clock intent', ()
   assert.equal(toTwentyFourHourTime('12', '15', 'AM'), '00:15')
   assert.equal(toTwentyFourHourTime('12', '30', 'PM'), '12:30')
   assert.equal(toTwentyFourHourTime('9', '45', 'PM'), '21:45')
+})
+
+test('marks doses green only within ten minutes before or after their schedule', () => {
+  const scheduledAt = new Date('2026-08-06T12:00:00')
+  assert.equal(isOnTime(scheduledAt, new Date('2026-08-06T11:50:00')), true)
+  assert.equal(isOnTime(scheduledAt, new Date('2026-08-06T12:10:00')), true)
+  assert.equal(isOnTime(scheduledAt, new Date('2026-08-06T11:49:59')), false)
+  assert.equal(isOnTime(scheduledAt, new Date('2026-08-06T12:10:01')), false)
+  assert.equal(takenRecordStatus({
+    scheduledAt: '2026-08-06T12:00:00',
+    takenAt: '2026-08-06T12:15:00',
+    status: 'on-time',
+  }), 'late')
 })
 
 test('formats next-dose countdowns in days after 24 hours', () => {
