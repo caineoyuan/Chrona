@@ -640,7 +640,7 @@ function MedicationForm({ initial, onSave, onClose }) {
             <div className="form-section-head"><div><h3>Schedule</h3></div></div>
             <span className="field-label">Frequency</span>
             <div className="frequency-picker" role="group" aria-label="Medication frequency">
-              {[['daily', 'Daily'], ['interval', 'Hourly'], ['weekly', 'Weekly']].map(([value, label]) => (
+              {[['interval', 'Hourly'], ['daily', 'Daily'], ['weekly', 'Weekly']].map(([value, label]) => (
                 <button type="button" key={value} className={form.scheduleType === value ? 'active' : ''} aria-pressed={form.scheduleType === value}
                   onClick={() => setForm({
                     ...form,
