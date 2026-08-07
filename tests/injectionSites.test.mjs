@@ -350,12 +350,13 @@ test('overrides a taken date locally and re-anchors the latest every-days dose',
     }],
     schedule: { type: 'day-interval', intervalDays: 3, anchorAt: originalTakenAt },
   }
-  const updated = overrideTakenDate(med, 'latest-dose', '2026-08-04')
+  const updated = overrideTakenDate(med, 'latest-dose', '2026-08-04', '14:25')
   const takenAt = new Date(updated.history[0].takenAt)
   const anchorAt = new Date(updated.schedule.anchorAt)
 
   assert.equal(takenAt.getDate(), 4)
-  assert.equal(takenAt.getHours(), 9)
+  assert.equal(takenAt.getHours(), 14)
+  assert.equal(takenAt.getMinutes(), 25)
   assert.equal(anchorAt.getDate(), 4)
   assert.equal(isFutureLocalDate('2026-08-07', new Date(2026, 7, 6, 23, 59)), true)
   assert.equal(isFutureLocalDate('2026-08-06', new Date(2026, 7, 6, 0, 1)), false)

@@ -54,12 +54,22 @@ html[data-theme='light'] img[src$='medication-icon.png'] {
 
 html,
 body {
+  width: 100%;
+  max-width: 100%;
   margin: 0;
   background: var(--bg);
   color: var(--text);
   font-family: var(--sans);
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  overscroll-behavior-y: none;
   transition: background-color 180ms ease, color 180ms ease;
+}
+
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 button {

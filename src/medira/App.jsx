@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import './index.css'
 import { FluentProvider, Spinner, Switch, webDarkTheme, webLightTheme } from '@fluentui/react-components'
 import { AddFilled } from '@fluentui/react-icons/svg/add'
@@ -46,7 +46,7 @@ import { scanMedicationLabel } from './labelOcr'
 import { searchOpenFda } from './openFda'
 import { playComplete, unlockSounds } from './sound'
 import { useMedications } from './storage'
-import { reregisterPush, subscribePush, syncPushReminders } from './push'
+import { syncPushReminders } from './push'
 
 const emptyForm = {
   name: '', dose: '', notes: '', times: ['08:00'],
@@ -126,6 +126,11 @@ function scheduleLabels(medication) {
 function formatLocalDate(value) {
   const [year, month, day] = value.split('-').map(Number)
   return new Date(year, month - 1, day).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function formatLocalDateLong(value) {
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
 function frequencyLabel(medication) {
@@ -217,7 +222,10 @@ function TimeInput({ value, onChange, onComplete, label, compact = false }) {
     const field = index === 0 ? 'hours' : 'minutes'
     const nextParts = { ...parts, [field]: nextPart }
     setParts(nextParts)
-    if (nextPart.length !== 2) return
+    if (nextPart.length !== 2) {
+      requestAnimationFrame(() => inputs.current[index]?.setSelectionRange(nextPart.length, nextPart.length))
+      return
+    }
     const next = toTwentyFourHourTime(nextParts.hours, nextParts.minutes, nextParts.period)
     if (!next) {
       setParts(toTwelveHourTime(value))
@@ -700,10 +708,15 @@ function MedicationForm({ initial, onSave, onClose }) {
             </div>}
             {form.scheduleType === 'daily' && <SmallIconButton label="Add time" name="plus" className="add-time-btn" onClick={() => setForm({ ...form, times: [...form.times, '12:00'] })} />}
             <div className="start-date-options" role="radiogroup" aria-label="Medication start date">
-              <label><input type="radio" name="medication-start-date" checked={!form.hasStartDate}
-                onChange={() => setForm({ ...form, hasStartDate: false, startDate: '' })} />Start immediately</label>
               <label><input type="radio" name="medication-start-date" checked={form.hasStartDate}
-                onChange={() => setForm({ ...form, hasStartDate: true })} />Add a start date</label>
+                onClick={(event) => {
+                  if (!form.hasStartDate) return
+                  event.preventDefault()
+                  setForm({ ...form, hasStartDate: false, startDate: '' })
+                }}
+                onChange={(event) => {
+                  if (event.target.checked) setForm({ ...form, hasStartDate: true })
+                }} />Add a start date</label>
             </div>
             {form.hasStartDate && <label className="start-date-field">Start date
               <input type="date" required value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value, scheduleAnchorAt: null })} />
@@ -912,8 +925,10 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
   const [futureMonths, setFutureMonths] = useState(6)
   const [selectedDate, setSelectedDate] = useState(null)
   const [overrideRecord, setOverrideRecord] = useState(null)
+  const [pendingOverride, setPendingOverride] = useState(null)
   const [futureDateWarning, setFutureDateWarning] = useState(false)
   const calendarScrollRef = useRef(null)
+  const calendarLoad = useRef(null)
   const doseTap = useRef({ recordId: null, at: 0 })
   const currentMonthKey = `${now.getFullYear()}-${now.getMonth()}`
   const next = getNextDose([medication], now)
@@ -925,17 +940,42 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
     if (container && currentMonth) container.scrollLeft = currentMonth.offsetLeft - container.offsetLeft
   }, [currentMonthKey, medication.id])
 
+  useLayoutEffect(() => {
+    const container = calendarScrollRef.current
+    if (!container || !calendarLoad.current) return
+    if (calendarLoad.current.side === 'past') {
+      container.scrollLeft += container.scrollWidth - calendarLoad.current.scrollWidth
+    }
+    calendarLoad.current = null
+  }, [futureMonths, pastMonths])
+
+  const loadCalendarAtEdge = (event) => {
+    const container = event.currentTarget
+    if (calendarLoad.current) return
+    if (container.scrollLeft <= 16) {
+      calendarLoad.current = { side: 'past', scrollWidth: container.scrollWidth }
+      setPastMonths((months) => months + 6)
+    } else if (container.scrollWidth - container.clientWidth - container.scrollLeft <= 16) {
+      calendarLoad.current = { side: 'future', scrollWidth: container.scrollWidth }
+      setFutureMonths((months) => months + 6)
+    }
+  }
+
   const selectHistoryDate = (date, monthLabel) => {
     if (overrideRecord) {
       if (isFutureLocalDate(date.dateKey, now)) {
         setFutureDateWarning(true)
         return
       }
-      onOverrideTakenDate(medication, overrideRecord.recordId, date.dateKey)
-      setOverrideRecord(null)
-      setSelectedDate(null)
+      const record = medication.history.find((entry) => entry.id === overrideRecord.recordId)
+      const takenAt = new Date(record?.takenAt)
+      const time = Number.isNaN(takenAt.getTime())
+        ? '08:00'
+        : `${String(takenAt.getHours()).padStart(2, '0')}:${String(takenAt.getMinutes()).padStart(2, '0')}`
+      setPendingOverride({ recordId: overrideRecord.recordId, dateKey: date.dateKey, time })
       return
     }
+    if (!date.events.length) return
     setSelectedDate(selectedDate?.dateKey === date.dateKey ? null : { ...date, monthLabel })
   }
 
@@ -944,6 +984,7 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
     const tappedAt = Date.now()
     if (doseTap.current.recordId === event.recordId && tappedAt - doseTap.current.at <= 320) {
       setOverrideRecord(event)
+      setSelectedDate(null)
       doseTap.current = { recordId: null, at: 0 }
       return
     }
@@ -981,10 +1022,9 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
           <div className="calendar-heading"><span className="eyebrow">Dose history</span><small>Scroll for past and future months</small></div>
           {overrideRecord && <div className="history-override-banner">
             <span>Select the new taken date.</span>
-            <button type="button" onClick={() => setOverrideRecord(null)}>Cancel</button>
+            <button type="button" onClick={() => { setOverrideRecord(null); setPendingOverride(null) }}>Cancel</button>
           </div>}
-          <button type="button" className="calendar-load" onClick={() => setPastMonths((months) => months + 12)}>Load earlier months</button>
-          <div className="calendar-scroll" ref={calendarScrollRef}>
+          <div className="calendar-scroll" ref={calendarScrollRef} onScroll={loadCalendarAtEdge}>
             {calendarMonths.map((month) => (
               <div className="calendar-month" data-month={month.key} key={month.key}>
                 <h4>{month.label}</h4>
@@ -996,29 +1036,58 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
                     const label = `${month.label} ${date.day}${date.count ? `, taken ${date.count} ${date.count === 1 ? 'time' : 'times'}` : ''}${date.missedCount ? `, missed ${date.missedCount}` : ''}`
                     return <div className={`calendar-day ${date.count ? 'taken' : ''} ${date.missedCount ? 'missed' : ''}`} key={date.day}>
                       <button type="button" aria-label={label} aria-expanded={selected}
+                        disabled={!overrideRecord && !date.events.length}
                         onClick={() => selectHistoryDate(date, month.label)}>{date.day}</button>
                       {date.count > 1 && <small>{date.count} times</small>}
+                      {date.count === 1 && date.injectionSites[0] && <small>{date.injectionSites[0]}</small>}
                     </div>
                   })}
                 </div>
-                {selectedDate?.monthLabel === month.label && <div className="calendar-info-balloon" role="status">
-                  <strong>{selectedDate.monthLabel} {selectedDate.day}</strong>
-                  {selectedDate.events.length ? selectedDate.events.map((event, index) => (
-                    event.status === 'missed' || event.status === 'skipped'
-                      ? <span key={`${event.time}-${index}`}>Missed {new Date(event.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
-                      : <button type="button" className="history-dose" key={`${event.time}-${index}`}
-                        title="Double tap to change taken date" onClick={() => handleDoseTap(event)}>
-                        Taken {new Date(event.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                        {event.injectionSite ? ` · ${INJECTION_SITE_CODES[event.injectionSite]}` : ''}
-                      </button>
-                  )) : <span>No recorded dose.</span>}
-                  {selectedDate.events.some((event) => event.recordId) && <small>Double tap a taken dose to change its date.</small>}
-                </div>}
               </div>
             ))}
           </div>
-          <button type="button" className="calendar-load" onClick={() => setFutureMonths((months) => months + 12)}>Load later months</button>
         </section>
+        {selectedDate && <div className="history-warning-backdrop" role="dialog" aria-modal="true"
+          aria-labelledby="history-date-title" onMouseDown={(event) => event.target === event.currentTarget && setSelectedDate(null)}>
+          <div className="history-warning history-record-modal">
+            <div className="history-time-head">
+              <h3 className="modal-title" id="history-date-title">{formatLocalDateLong(selectedDate.dateKey)}</h3>
+              <SmallIconButton label="Close date details" name="close" onClick={() => setSelectedDate(null)} />
+            </div>
+            <div className="history-record-list">
+              {selectedDate.events.map((event, index) => (
+                event.status === 'missed' || event.status === 'skipped'
+                  ? <span key={`${event.time}-${index}`}>Missed {new Date(event.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+                  : <button type="button" className="history-dose" key={`${event.time}-${index}`}
+                    title="Double tap to change taken date" onClick={() => handleDoseTap(event)}>
+                    Taken {new Date(event.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                    {event.injectionSite ? ` · ${INJECTION_SITE_CODES[event.injectionSite]}` : ''}
+                  </button>
+              ))}
+            </div>
+            {selectedDate.events.some((event) => event.recordId) && <small>Double tap a taken dose to change its date.</small>}
+          </div>
+        </div>}
+        {pendingOverride && <div className="history-warning-backdrop" role="dialog" aria-modal="true" aria-labelledby="override-time-title">
+          <div className="history-warning history-time-modal">
+            <div className="history-time-head">
+              <h3 className="modal-title" id="override-time-title">Confirm taken time</h3>
+              <SmallIconButton label="Cancel date override" name="close" onClick={() => setPendingOverride(null)} />
+            </div>
+            <p>{formatLocalDate(pendingOverride.dateKey)}</p>
+            <div className="history-time-field">
+              <span>Taken time</span>
+              <TimeInput label="Override taken time" value={pendingOverride.time}
+                onChange={(time) => setPendingOverride((current) => ({ ...current, time }))} />
+            </div>
+            <button type="button" className="primary-btn wide" onClick={() => {
+              onOverrideTakenDate(medication, pendingOverride.recordId, pendingOverride.dateKey, pendingOverride.time)
+              setPendingOverride(null)
+              setOverrideRecord(null)
+              setSelectedDate(null)
+            }}>Confirm taken date and time</button>
+          </div>
+        </div>}
         {futureDateWarning && <div className="history-warning-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="future-date-warning">
           <div className="history-warning">
             <h3 className="modal-title" id="future-date-warning">Date not allowed</h3>
@@ -1058,7 +1127,6 @@ function App({ colorScheme = 'dark' }) {
   const [confirmingDelete, setConfirmingDelete] = useState(null)
   const [hasPushSubscription, setHasPushSubscription] = useState(false)
   const [deviceTimeZone, setDeviceTimeZone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
-  const [pushStatus, setPushStatus] = useState('')
 
   useEffect(() => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
@@ -1123,27 +1191,6 @@ function App({ colorScheme = 'dark' }) {
     }, delay)
     return () => clearTimeout(timer)
   }, [hasPushSubscription, reminder])
-
-  const configurePush = async (force = false) => {
-    const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent)
-    const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
-    if (isIos && !standalone) {
-      setPushStatus('On iPhone or iPad, add Chrona to the Home Screen, then open it there to enable reminders.')
-      return
-    }
-    const currentTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-    setDeviceTimeZone(currentTimeZone)
-    setPushStatus(force ? 'Re-registering notifications…' : 'Enabling notifications…')
-    try {
-      const enabled = force ? await reregisterPush(medications) : await subscribePush(medications)
-      setHasPushSubscription(enabled)
-      setPushStatus(enabled
-        ? `Medication reminders are enabled in ${currentTimeZone}.`
-        : 'Notifications are unavailable or were not allowed on this device.')
-    } catch (error) {
-      setPushStatus(error.message || 'Could not configure notifications on this device.')
-    }
-  }
 
   const markTaken = (dose) => {
     if (dose.medication.trackInjectionSite) {
@@ -1277,9 +1324,9 @@ function App({ colorScheme = 'dark' }) {
     }))
   }
 
-  const changeTakenDate = (medication, recordId, dateKey) => {
+  const changeTakenDate = (medication, recordId, dateKey, time) => {
     setMedications((items) => items.map((item) => (
-      item.id === medication.id ? overrideTakenDate(item, recordId, dateKey) : item
+      item.id === medication.id ? overrideTakenDate(item, recordId, dateKey, time) : item
     )))
     setNotice(`${medication.name} taken date updated`)
     setTimeout(() => setNotice(''), 2600)
@@ -1331,16 +1378,6 @@ function App({ colorScheme = 'dark' }) {
               </div>
               <ProgressRing next={next} now={now} />
             </div>
-            <section className="notification-setup" aria-label="Medication notification settings">
-              <span><strong>Device reminders</strong><small>{hasPushSubscription
-                ? `Enabled in ${deviceTimeZone}`
-                : 'Enable background reminders on this device.'}</small></span>
-              <button type="button" className="secondary-btn" onClick={() => configurePush(hasPushSubscription)}>
-                {hasPushSubscription ? 'Re-register' : 'Enable'}
-              </button>
-              {pushStatus && <p>{pushStatus}</p>}
-            </section>
-
             {todayDoses.length ? (
               <div className="card-wrap schedule-card-wrap"><div className="card dose-list">{todayDoses.map((dose) => <DoseCard key={dose.key} dose={dose}
                 onTaken={markTaken} onSkip={skipDose} onUndo={undoTaken} onTimeChange={overrideDoseTime} onOpen={setViewingMedication} />)}</div></div>

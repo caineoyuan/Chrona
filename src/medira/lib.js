@@ -325,11 +325,11 @@ export function isFutureLocalDate(dateKey, now = new Date()) {
   return Boolean(target && target > today)
 }
 
-export function overrideTakenDate(medication, recordId, dateKey) {
+export function overrideTakenDate(medication, recordId, dateKey, overrideTime = null) {
   const record = medication.history.find((entry) => entry.id === recordId && entry.takenAt)
   if (!record) return medication
   const previousTakenAt = new Date(record.takenAt)
-  const time = `${String(previousTakenAt.getHours()).padStart(2, '0')}:${String(previousTakenAt.getMinutes()).padStart(2, '0')}`
+  const time = overrideTime || `${String(previousTakenAt.getHours()).padStart(2, '0')}:${String(previousTakenAt.getMinutes()).padStart(2, '0')}`
   const takenAt = localScheduleAnchor(dateKey, time)
   if (!takenAt) return medication
   const wasLastTaken = getLastTaken(medication)?.id === recordId
