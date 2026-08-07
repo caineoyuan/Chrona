@@ -61,15 +61,17 @@ body {
   color: var(--text);
   font-family: var(--sans);
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
-  overscroll-behavior-y: none;
+  overflow-x: clip;
+  overflow-y: auto;
+  overscroll-behavior-y: auto;
   transition: background-color 180ms ease, color 180ms ease;
 }
 
 #root {
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
 }
 
 button {
@@ -412,8 +414,9 @@ html[data-theme='light'] .workspace-chrona .chooser-btn {
 }
 html[data-theme='light'] .workspace-chrona .swipe-act,
 html[data-theme='light'] .workspace-chrona .swipe-act.danger {
-  color: #777773;
-  background: rgba(255, 255, 255, 0.72);
+  color: #858581;
+  background: #f4f4f1;
+  border: 1px solid #d9d9d4;
 }
 .weekly-ring {
   position: relative;
