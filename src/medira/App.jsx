@@ -1002,6 +1002,15 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
     setHistoryEdits((edits) => edits.map((edit) => edit.recordId === recordId ? { ...edit, ...changes } : edit))
   }
 
+  const startAddingDose = () => {
+    setNewDose({
+      dateKey: selectedDate.dateKey,
+      time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+      injectionSite: '',
+      scheduledAt: selectedDate.events.find((event) => event.status === 'missed' || event.status === 'skipped')?.time || null,
+    })
+  }
+
   const closeHistoryDate = () => {
     setSelectedDate(null)
     setHistoryEdits([])
@@ -1056,9 +1065,11 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
                   {Array.from({ length: month.leadingDays }, (_, index) => <span className="calendar-blank" key={`blank-${index}`} />)}
                   {month.days.map((date) => {
                     const selected = selectedDate?.dateKey === date.dateKey
+                    const future = isFutureLocalDate(date.dateKey, now)
                     const label = `${month.label} ${date.day}${date.count ? `, taken ${date.count} ${date.count === 1 ? 'time' : 'times'}` : ''}${date.missedCount ? `, missed ${date.missedCount}` : ''}`
                     return <div className={`calendar-day ${date.count ? 'taken' : ''} ${date.missedCount ? 'missed' : ''}`} key={date.day}>
                       <button type="button" aria-label={label} aria-expanded={selected}
+                        disabled={future}
                         onClick={() => selectHistoryDate(date, month.label)}>{date.day}</button>
                       {date.count > 1 && <small>{date.count} times</small>}
                       {date.count === 1 && date.injectionSites[0] && <small>{date.injectionSites[0]}</small>}
@@ -1080,7 +1091,7 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
               {selectedDate.events.filter((event) => event.status === 'missed' || event.status === 'skipped').map((event, index) => (
                 <span key={`${event.time}-${index}`}>Missed {new Date(event.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
               ))}
-              {historyEdits.map((edit, index) => <fieldset className="history-dose-editor" key={edit.recordId}>
+              {historyEdits.map((edit, index) => <fieldset className="history-dose-editor has-delete" key={edit.recordId}>
                 <legend>{historyEdits.length > 1 ? `Taken dose ${index + 1}` : 'Taken dose'}</legend>
                 <SmallIconButton label="Delete this dose" name="trash" className="danger history-delete"
                   onClick={() => {
@@ -1107,13 +1118,7 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
               {deletedRecordIds.length > 0 && <span>{deletedRecordIds.length === 1 ? '1 dose will be deleted.' : `${deletedRecordIds.length} doses will be deleted.`}</span>}
               {!historyEdits.length && !deletedRecordIds.length && !newDose && <div className="history-add-prompt">
                 <span>No dose is recorded for this date. Add one?</span>
-                <SmallIconButton label={`Add dose on ${formatLocalDateLong(selectedDate.dateKey)}`} name="plus"
-                  onClick={() => setNewDose({
-                    dateKey: selectedDate.dateKey,
-                    time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
-                    injectionSite: '',
-                    scheduledAt: selectedDate.events.find((event) => event.status === 'missed' || event.status === 'skipped')?.time || null,
-                  })} />
+                <SmallIconButton label="Add dose" name="plus" className="history-add-dose" onClick={startAddingDose} />
               </div>}
               {newDose && <fieldset className="history-dose-editor">
                 <legend>Add dose</legend>
@@ -1135,7 +1140,10 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
                 </label>}
               </fieldset>}
             </div>
-            {(historyEdits.length > 0 || deletedRecordIds.length > 0 || newDose) && <button type="button" className="primary-btn wide history-save" onClick={saveHistoryEdits}>Save changes</button>}
+            <div className="history-modal-actions">
+              {!newDose && (historyEdits.length > 0 || deletedRecordIds.length > 0) && <SmallIconButton label="Add dose" name="plus" className="history-add-dose" onClick={startAddingDose} />}
+              {(historyEdits.length > 0 || deletedRecordIds.length > 0 || newDose) && <SmallIconButton label="Save changes" name="save" className="history-save" onClick={saveHistoryEdits} />}
+            </div>
           </div>
         </div>}
         {futureDateWarning && <div className="history-warning-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="future-date-warning">

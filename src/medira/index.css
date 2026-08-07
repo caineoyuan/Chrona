@@ -519,19 +519,26 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .history-record-modal > small { display: block; margin-top: 8px; color: var(--muted); font-size: var(--font-xs); }
 .history-record-list { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
 .history-record-list > span { color: var(--muted); font-size: var(--font-sm); }
-.history-dose-editor { position: relative; margin: 0; padding: 16px !important; background: var(--bg-2); border: 1px solid var(--line) !important; }
+.history-dose-editor { position: relative; margin: 0; padding: 0 16px 16px !important; background: var(--bg-2); border: 1px solid var(--line) !important; }
+.medira-shell.light .history-dose-editor { background: #d9d9d4; }
 .history-dose-editor legend { padding: 0 8px; color: var(--accent-ink); font-size: var(--font-xs); }
 .history-dose-editor label { margin-bottom: 16px; }
 .history-dose-editor label:last-child { margin-bottom: 0; }
-.history-dose-editor .history-delete { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; }
-.history-add-prompt { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; color: var(--muted); background: var(--bg-2); border: 1px dashed var(--accent); font-size: var(--font-sm); }
+.history-dose-editor > label:first-of-type { margin-top: -8px; }
+.history-dose-editor.has-delete > label:first-of-type { padding-right: 64px; }
+.history-dose-editor .history-delete { position: absolute; top: 16px; right: 16px; width: 32px; height: 32px; }
+.history-add-prompt { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--muted); font-size: var(--font-sm); }
 .history-add-prompt .icon-btn { flex: none; }
 .history-time-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .history-time-modal .history-time-head .icon-btn { flex: none; }
 .history-time-field { margin: 16px 0; }
 .history-time-field > span { display: block; margin-bottom: 8px; color: var(--muted); font-size: var(--font-xs); }
 .history-time-modal .primary-btn.wide { float: none; margin-top: 0; }
-.history-record-modal .history-save { float: none; width: 100%; margin-top: 16px; }
+.history-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.history-record-modal .history-save { float: none; width: 40px; height: 40px; margin-top: 0; color: #073d31; background: var(--accent); border-color: var(--accent); }
+.history-add-dose { width: 40px; height: 40px; color: #073d31; background: var(--accent); border-color: var(--accent); }
+.medira-shell.light .history-add-dose,
+.medira-shell.light .history-save { color: var(--action-icon); background: var(--action-teal); border-color: var(--action-teal); }
 .site-instruction { color: var(--muted); font-size: var(--font-sm); margin: -8px 0 10px; }
 .site-legend { display: flex; justify-content: center; gap: 14px; margin-bottom: 14px; }
 .site-legend span { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: var(--font-xs); }
