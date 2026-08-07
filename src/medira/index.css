@@ -447,10 +447,10 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .time-input b { margin: 0; color: var(--muted); font-size: var(--font-sm); line-height: 1; }
 .time-input input:not([type="checkbox"]) { width: 40px; height: 40px; margin: 0; padding: 8px 0; color: var(--text); text-align: center; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; font-family: var(--sans); font-size: var(--font-sm); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: 1px; caret-color: auto; }
 .time-input input:focus { color: var(--text); border-color: var(--accent); outline: none; }
-.time-input > .time-period { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin-left: 4px; }
-.time-period button { min-width: 40px; height: 40px; padding: 8px; color: var(--muted); background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; font-size: var(--font-xs); font-weight: 700; }
-.time-period button.active { color: #343331; background: var(--accent); border-color: var(--accent); }
-.medira-shell.light .time-period button.active { color: white; }
+.time-period-toggle { display: grid; grid-template-rows: repeat(2, 1fr); min-width: 48px; height: 40px; margin-left: 4px; padding: 0; overflow: hidden; color: var(--muted); background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; font-size: var(--font-xs); font-weight: 700; }
+.time-period-toggle span { display: grid; place-items: center; min-height: 0; line-height: 1; }
+.time-period-toggle span.active { color: #343331; background: var(--accent); }
+.medira-shell.light .time-period-toggle span.active { color: white; }
 .time-input.compact { padding: 0; }
 .time-input.compact b { font-size: var(--font-sm); }
 .time-input.compact input:not([type="checkbox"]) { width: 40px; height: 40px; font-size: var(--font-sm); }
@@ -511,6 +511,16 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .calendar-info-balloon::before { position: absolute; top: -7px; left: 24px; width: 12px; height: 12px; content: ''; background: var(--bg-2); border-top: 1px solid var(--accent); border-left: 1px solid var(--accent); transform: rotate(45deg); }
 .calendar-info-balloon strong { font-size: var(--font-sm); }
 .calendar-info-balloon span { color: var(--muted); font-size: var(--font-xs); }
+.calendar-info-balloon small { color: var(--muted); font-size: var(--font-xs); }
+.history-dose { width: 100%; padding: 8px; color: var(--text); text-align: left; background: transparent; border: 1px solid var(--line); border-radius: 2px; font-size: var(--font-xs); }
+.history-dose:hover { border-color: var(--accent); }
+.history-override-banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; padding: 8px 16px; color: var(--text); background: var(--bg-2); border: 1px solid var(--accent); border-radius: 2px; font-size: var(--font-sm); }
+.history-override-banner button { padding: 8px; color: var(--muted); background: transparent; border: 0; font-size: var(--font-xs); }
+.history-warning-backdrop { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 16px; background: rgba(0,0,0,.72); }
+.history-warning { width: min(360px, 100%); padding: 24px; color: var(--text); background: linear-gradient(160deg, var(--card), var(--card-2)); border: 1px solid var(--line); border-bottom: 4px solid var(--accent); }
+.history-warning .modal-title { font-size: var(--font-md); }
+.history-warning p { color: var(--muted); font-size: var(--font-sm); }
+.history-warning .primary-btn { float: right; }
 .calendar-load { width: 100%; margin: 8px 0; padding: 8px 16px; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 12px; font-size: var(--font-xs); }
 .site-instruction { color: var(--muted); font-size: var(--font-sm); margin: -8px 0 10px; }
 .site-legend { display: flex; justify-content: center; gap: 14px; margin-bottom: 14px; }

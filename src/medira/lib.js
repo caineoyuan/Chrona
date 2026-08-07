@@ -319,6 +319,44 @@ export function getLastTaken(medication) {
     .sort((a, b) => new Date(b.takenAt) - new Date(a.takenAt))[0] || null
 }
 
+export function isFutureLocalDate(dateKey, now = new Date()) {
+  const target = localScheduleAnchor(dateKey, '00:00')
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  return Boolean(target && target > today)
+}
+
+export function overrideTakenDate(medication, recordId, dateKey) {
+  const record = medication.history.find((entry) => entry.id === recordId && entry.takenAt)
+  if (!record) return medication
+  const previousTakenAt = new Date(record.takenAt)
+  const time = `${String(previousTakenAt.getHours()).padStart(2, '0')}:${String(previousTakenAt.getMinutes()).padStart(2, '0')}`
+  const takenAt = localScheduleAnchor(dateKey, time)
+  if (!takenAt) return medication
+  const wasLastTaken = getLastTaken(medication)?.id === recordId
+  const scheduledAt = new Date(record.scheduledAt)
+  const history = medication.history.map((entry) => entry.id !== recordId ? entry : {
+    ...entry,
+    takenAt: takenAt.toISOString(),
+    status: Number.isNaN(scheduledAt.getTime()) ? entry.status : isOnTime(scheduledAt, takenAt) ? 'on-time' : 'late',
+  })
+  const latestTakenAt = wasLastTaken
+    ? history.filter((entry) => entry.takenAt).map((entry) => new Date(entry.takenAt)).sort((a, b) => b - a)[0]
+    : null
+  const latestTime = latestTakenAt
+    ? `${String(latestTakenAt.getHours()).padStart(2, '0')}:${String(latestTakenAt.getMinutes()).padStart(2, '0')}`
+    : null
+  return {
+    ...medication,
+    history,
+    times: latestTime && medication.schedule?.type === 'day-interval'
+      ? medication.times?.map((current, index) => index === 0 ? latestTime : current) || medication.times
+      : medication.times,
+    schedule: latestTakenAt && medication.schedule?.type === 'day-interval'
+      ? { ...medication.schedule, anchorAt: latestTakenAt.toISOString() }
+      : medication.schedule,
+  }
+}
+
 export function getRecentInjectionSites(medication, limit = 2) {
   return [...medication.history]
     .filter((record) => record.injectionSite)
@@ -376,6 +414,7 @@ export function medicationCalendarMonths(medication, now = new Date(), range = n
         ))
         const events = [
           ...records.map((record) => ({
+            recordId: record.id || null,
             status: record.takenAt ? record.status || 'taken' : 'missed',
             time: record.takenAt || record.skippedAt || record.scheduledAt,
             injectionSite: record.injectionSite || null,

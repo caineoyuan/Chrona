@@ -12,9 +12,11 @@ import {
   getUpcomingReminders,
   INJECTION_SITE_CODES,
   inventoryInteger,
+  isFutureLocalDate,
   localScheduleAnchor,
   medicationCalendarMonths,
   overrideScheduledTime,
+  overrideTakenDate,
   parsePastedTime,
   reminderOffsets,
   timesForScheduleType,
@@ -318,7 +320,7 @@ test('builds current and past calendar months with taken counts', () => {
   const med = {
     history: [
       { takenAt: '2026-07-04T09:00:00' },
-      { takenAt: '2026-08-06T09:00:00', injectionSite: 'left-lower' },
+      { id: 'injection-record', takenAt: '2026-08-06T09:00:00', injectionSite: 'left-lower' },
       { takenAt: '2026-08-06T15:00:00' },
       { skippedAt: '2026-08-05T09:00:00', status: 'skipped' },
     ],
@@ -329,10 +331,34 @@ test('builds current and past calendar months with taken counts', () => {
   assert.equal(months[0].days.find(({ day }) => day === 6).count, 2)
   assert.equal(months[0].days.find(({ day }) => day === 5).missedCount, 1)
   assert.deepEqual(months[0].days.find(({ day }) => day === 6).injectionSites, ['LL'])
+  assert.equal(months[0].days.find(({ day }) => day === 6).events[0].recordId, 'injection-record')
   assert.equal(months[1].days.find(({ day }) => day === 4).count, 1)
   assert.equal(INJECTION_SITE_CODES['left-upper'], 'LU')
   assert.equal(INJECTION_SITE_CODES['right-lower'], 'RL')
   assert.equal(INJECTION_SITE_CODES['right-upper'], 'RU')
+})
+
+test('overrides a taken date locally and re-anchors the latest every-days dose', () => {
+  const scheduledAt = new Date(2026, 7, 6, 9, 0).toISOString()
+  const originalTakenAt = new Date(2026, 7, 6, 9, 10).toISOString()
+  const med = {
+    history: [{
+      id: 'latest-dose',
+      scheduledAt,
+      takenAt: originalTakenAt,
+      status: 'on-time',
+    }],
+    schedule: { type: 'day-interval', intervalDays: 3, anchorAt: originalTakenAt },
+  }
+  const updated = overrideTakenDate(med, 'latest-dose', '2026-08-04')
+  const takenAt = new Date(updated.history[0].takenAt)
+  const anchorAt = new Date(updated.schedule.anchorAt)
+
+  assert.equal(takenAt.getDate(), 4)
+  assert.equal(takenAt.getHours(), 9)
+  assert.equal(anchorAt.getDate(), 4)
+  assert.equal(isFutureLocalDate('2026-08-07', new Date(2026, 7, 6, 23, 59)), true)
+  assert.equal(isFutureLocalDate('2026-08-06', new Date(2026, 7, 6, 0, 1)), false)
 })
 
 test('builds scrollable medication history ranges into past and future months', () => {

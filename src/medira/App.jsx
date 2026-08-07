@@ -28,10 +28,12 @@ import {
   getRecentInjectionSites,
   INJECTION_SITE_CODES,
   inventoryInteger,
+  isFutureLocalDate,
   isOnTime,
   localScheduleAnchor,
   medicationCalendarMonths,
   overrideScheduledTime,
+  overrideTakenDate,
   parsePastedTime,
   reminderOffsets,
   timesForScheduleType,
@@ -275,12 +277,13 @@ function TimeInput({ value, onChange, onComplete, label, compact = false }) {
             onKeyDown={(event) => handleKey(event, index)} onBlur={() => commitPartial(index)} />
         </span>
       ))}
-      <span className="time-period" role="group" aria-label={`${label}, AM or PM`}>
-        {['AM', 'PM'].map((period) => (
-          <button type="button" className={parts.period === period ? 'active' : ''} aria-pressed={parts.period === period}
-            key={period} onClick={() => selectPeriod(period)}>{period}</button>
-        ))}
-      </span>
+      <button type="button" className="time-period-toggle"
+        role="switch" aria-checked={parts.period === 'PM'}
+        aria-label={`${label}, ${parts.period}. Toggle AM or PM`}
+        onClick={() => selectPeriod(parts.period === 'AM' ? 'PM' : 'AM')}>
+        <span className={parts.period === 'AM' ? 'active' : ''}>AM</span>
+        <span className={parts.period === 'PM' ? 'active' : ''}>PM</span>
+      </button>
     </div>
   )
 }
@@ -904,11 +907,14 @@ function InjectionSiteMap({ medication, onSelect, compact = false }) {
   )
 }
 
-function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory }) {
+function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory, onOverrideTakenDate }) {
   const [pastMonths, setPastMonths] = useState(6)
   const [futureMonths, setFutureMonths] = useState(6)
   const [selectedDate, setSelectedDate] = useState(null)
+  const [overrideRecord, setOverrideRecord] = useState(null)
+  const [futureDateWarning, setFutureDateWarning] = useState(false)
   const calendarScrollRef = useRef(null)
+  const doseTap = useRef({ recordId: null, at: 0 })
   const currentMonthKey = `${now.getFullYear()}-${now.getMonth()}`
   const next = getNextDose([medication], now)
   const calendarMonths = medicationCalendarMonths(medication, now, { pastMonths, futureMonths })
@@ -918,6 +924,31 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
     const currentMonth = container?.querySelector(`[data-month="${currentMonthKey}"]`)
     if (container && currentMonth) container.scrollLeft = currentMonth.offsetLeft - container.offsetLeft
   }, [currentMonthKey, medication.id])
+
+  const selectHistoryDate = (date, monthLabel) => {
+    if (overrideRecord) {
+      if (isFutureLocalDate(date.dateKey, now)) {
+        setFutureDateWarning(true)
+        return
+      }
+      onOverrideTakenDate(medication, overrideRecord.recordId, date.dateKey)
+      setOverrideRecord(null)
+      setSelectedDate(null)
+      return
+    }
+    setSelectedDate(selectedDate?.dateKey === date.dateKey ? null : { ...date, monthLabel })
+  }
+
+  const handleDoseTap = (event) => {
+    if (!event.recordId || event.status === 'missed' || event.status === 'skipped') return
+    const tappedAt = Date.now()
+    if (doseTap.current.recordId === event.recordId && tappedAt - doseTap.current.at <= 320) {
+      setOverrideRecord(event)
+      doseTap.current = { recordId: null, at: 0 }
+      return
+    }
+    doseTap.current = { recordId: event.recordId, at: tappedAt }
+  }
 
   return (
     <div className="modal-backdrop details-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -948,6 +979,10 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
         {medication.notes && <section className="detail-instructions"><span>Instructions</span><p>{medication.notes}</p></section>}
         <section className="medication-calendar">
           <div className="calendar-heading"><span className="eyebrow">Dose history</span><small>Scroll for past and future months</small></div>
+          {overrideRecord && <div className="history-override-banner">
+            <span>Select the new taken date.</span>
+            <button type="button" onClick={() => setOverrideRecord(null)}>Cancel</button>
+          </div>}
           <button type="button" className="calendar-load" onClick={() => setPastMonths((months) => months + 12)}>Load earlier months</button>
           <div className="calendar-scroll" ref={calendarScrollRef}>
             {calendarMonths.map((month) => (
@@ -961,7 +996,7 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
                     const label = `${month.label} ${date.day}${date.count ? `, taken ${date.count} ${date.count === 1 ? 'time' : 'times'}` : ''}${date.missedCount ? `, missed ${date.missedCount}` : ''}`
                     return <div className={`calendar-day ${date.count ? 'taken' : ''} ${date.missedCount ? 'missed' : ''}`} key={date.day}>
                       <button type="button" aria-label={label} aria-expanded={selected}
-                        onClick={() => setSelectedDate(selected ? null : { ...date, monthLabel: month.label })}>{date.day}</button>
+                        onClick={() => selectHistoryDate(date, month.label)}>{date.day}</button>
                       {date.count > 1 && <small>{date.count} times</small>}
                     </div>
                   })}
@@ -969,18 +1004,28 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
                 {selectedDate?.monthLabel === month.label && <div className="calendar-info-balloon" role="status">
                   <strong>{selectedDate.monthLabel} {selectedDate.day}</strong>
                   {selectedDate.events.length ? selectedDate.events.map((event, index) => (
-                    <span key={`${event.time}-${index}`}>
-                      {event.status === 'missed' || event.status === 'skipped' ? 'Missed' : 'Taken'}{' '}
-                      {new Date(event.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                      {event.injectionSite ? ` · ${INJECTION_SITE_CODES[event.injectionSite]}` : ''}
-                    </span>
+                    event.status === 'missed' || event.status === 'skipped'
+                      ? <span key={`${event.time}-${index}`}>Missed {new Date(event.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+                      : <button type="button" className="history-dose" key={`${event.time}-${index}`}
+                        title="Double tap to change taken date" onClick={() => handleDoseTap(event)}>
+                        Taken {new Date(event.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                        {event.injectionSite ? ` · ${INJECTION_SITE_CODES[event.injectionSite]}` : ''}
+                      </button>
                   )) : <span>No recorded dose.</span>}
+                  {selectedDate.events.some((event) => event.recordId) && <small>Double tap a taken dose to change its date.</small>}
                 </div>}
               </div>
             ))}
           </div>
           <button type="button" className="calendar-load" onClick={() => setFutureMonths((months) => months + 12)}>Load later months</button>
         </section>
+        {futureDateWarning && <div className="history-warning-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="future-date-warning">
+          <div className="history-warning">
+            <h3 className="modal-title" id="future-date-warning">Date not allowed</h3>
+            <p>Taken dose cannot be a future date.</p>
+            <button type="button" className="primary-btn" onClick={() => setFutureDateWarning(false)}>OK</button>
+          </div>
+        </div>}
       </article>
     </div>
   )
@@ -1232,6 +1277,14 @@ function App({ colorScheme = 'dark' }) {
     }))
   }
 
+  const changeTakenDate = (medication, recordId, dateKey) => {
+    setMedications((items) => items.map((item) => (
+      item.id === medication.id ? overrideTakenDate(item, recordId, dateKey) : item
+    )))
+    setNotice(`${medication.name} taken date updated`)
+    setTimeout(() => setNotice(''), 2600)
+  }
+
   const copyMedicationList = async () => {
     if (!medications.length) {
       setNotice('No medications to copy')
@@ -1368,6 +1421,7 @@ function App({ colorScheme = 'dark' }) {
         now={now}
         onClose={() => setViewingMedication(null)}
         onAdjustInventory={adjustInventory}
+        onOverrideTakenDate={changeTakenDate}
         onEdit={(medication) => { setViewingMedication(null); setEditing(medication) }} />}
       {pendingDose && <InjectionSitePicker medication={pendingDose.medication} onSelect={(site) => completeTaken(pendingDose, site)} onClose={() => setPendingDose(null)} />}
       {confirmingDelete && (
