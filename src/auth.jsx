@@ -2,6 +2,11 @@ import { createContext, useContext, useEffect, useState, useCallback } from 'rea
 
 const AuthContext = createContext(null)
 
+export const isLocalPreview =
+  typeof window !== 'undefined' &&
+  ['localhost', '127.0.0.1'].includes(window.location.hostname) &&
+  new URLSearchParams(window.location.search).has('preview')
+
 async function api(path, options = {}) {
   const res = await fetch(path, {
     credentials: 'include',
@@ -22,10 +27,11 @@ async function api(path, options = {}) {
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState(isLocalPreview ? { username: 'Preview' } : null)
+  const [loading, setLoading] = useState(!isLocalPreview)
 
   useEffect(() => {
+    if (isLocalPreview) return
     let active = true
     api('/api/auth/me')
       .then((data) => {

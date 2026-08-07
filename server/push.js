@@ -25,15 +25,26 @@ router.get('/key', (_req, res) => res.json({ key: PUBLIC || '' }))
 
 router.post('/subscribe', requireAuth, async (req, res) => {
   try {
-    const { subscription, tz } = req.body || {}
+    const { subscription, tz, reminders } = req.body || {}
     if (!subscription?.endpoint) return res.status(400).json({ error: 'Bad subscription' })
-    await query(
-      `INSERT INTO push_subscriptions (endpoint, user_id, subscription, tz)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (endpoint)
-       DO UPDATE SET user_id = EXCLUDED.user_id, subscription = EXCLUDED.subscription, tz = EXCLUDED.tz`,
-      [subscription.endpoint, req.userId, JSON.stringify(subscription), tz || 'UTC'],
-    )
+    if (Array.isArray(reminders)) {
+      await query(
+        `INSERT INTO push_subscriptions (endpoint, user_id, subscription, tz, reminders)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (endpoint)
+         DO UPDATE SET user_id = EXCLUDED.user_id, subscription = EXCLUDED.subscription,
+                       tz = EXCLUDED.tz, reminders = EXCLUDED.reminders`,
+        [subscription.endpoint, req.userId, JSON.stringify(subscription), tz || 'UTC', JSON.stringify(reminders.slice(0, 500))],
+      )
+    } else {
+      await query(
+        `INSERT INTO push_subscriptions (endpoint, user_id, subscription, tz)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (endpoint)
+         DO UPDATE SET user_id = EXCLUDED.user_id, subscription = EXCLUDED.subscription, tz = EXCLUDED.tz`,
+        [subscription.endpoint, req.userId, JSON.stringify(subscription), tz || 'UTC'],
+      )
+    }
     res.json({ ok: true })
   } catch (err) {
     console.error('subscribe error', err)
@@ -104,7 +115,7 @@ function dueAndPending(set, localDate) {
 async function send(sub, set, when) {
   const body = when === 'morning'
     ? `Make sure to do your “${set.name}” today to keep your streak going!`
-    : `Last chance! Do your “${set.name}” before midnight!`
+    : `Last chance! Do your “${set.name}” before 12:30 AM!`
   try {
     await webpush.sendNotification(
       asObj(sub.subscription),
@@ -119,8 +130,42 @@ async function send(sub, set, when) {
 
 async function tick() {
   if (!configured) return
-  const subs = (await query('SELECT endpoint, user_id, subscription, tz FROM push_subscriptions')).rows
+  const subs = (await query('SELECT endpoint, user_id, subscription, tz, reminders FROM push_subscriptions')).rows
   for (const sub of subs) {
+    const reminders = Array.isArray(sub.reminders) ? sub.reminders : []
+    const remaining = []
+    let subscriptionRemoved = false
+    for (const reminder of reminders) {
+      if (new Date(reminder.alertAt).getTime() > Date.now()) {
+        remaining.push(reminder)
+        continue
+      }
+      try {
+        await webpush.sendNotification(
+          asObj(sub.subscription),
+          JSON.stringify({
+            title: reminder.title || 'Medication reminder',
+            body: reminder.body || 'A medication is scheduled.',
+            tag: reminder.tag,
+            icon: reminder.icon || '/medication-icon.png',
+          }),
+        )
+      } catch (err) {
+        if ([403, 404, 410].includes(err?.statusCode)) {
+          await query('DELETE FROM push_subscriptions WHERE endpoint = $1', [sub.endpoint]).catch(() => {})
+          subscriptionRemoved = true
+          break
+        }
+        remaining.push(reminder)
+      }
+    }
+    if (subscriptionRemoved) continue
+    if (remaining.length !== reminders.length) {
+      await query('UPDATE push_subscriptions SET reminders = $1 WHERE endpoint = $2', [
+        JSON.stringify(remaining),
+        sub.endpoint,
+      ])
+    }
     const now = tzNow(sub.tz)
     if (!now) continue
     const when = now.hh === '17' && now.mm === '00' ? 'morning'

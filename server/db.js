@@ -47,12 +47,24 @@ export async function initSchema() {
     );
   `)
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_medications (
+      user_id      INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      medications JSONB NOT NULL DEFAULT '[]'::jsonb,
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `)
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS push_subscriptions (
       endpoint     TEXT PRIMARY KEY,
       user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       subscription JSONB NOT NULL,
       tz           TEXT NOT NULL DEFAULT 'UTC',
+      reminders    JSONB NOT NULL DEFAULT '[]'::jsonb,
       created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+  `)
+  await pool.query(`
+    ALTER TABLE push_subscriptions
+    ADD COLUMN IF NOT EXISTS reminders JSONB NOT NULL DEFAULT '[]'::jsonb;
   `)
 }

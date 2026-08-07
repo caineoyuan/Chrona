@@ -1,4 +1,6 @@
 import { useState, useRef } from 'react'
+import { ClockRegular } from '@fluentui/react-icons/svg/clock'
+import { ClipboardTaskRegular } from '@fluentui/react-icons/svg/clipboard-task'
 import Icon from './Icon.jsx'
 import { playComplete, unlockSounds } from '../sound.js'
 import {
@@ -15,6 +17,7 @@ import {
   weeklyCount,
   ringColor,
   isDoneForToday,
+  streakDate,
   toggleSetCompleteToday,
   WEEKDAYS,
 } from '../lib.js'
@@ -73,8 +76,9 @@ function WeeklyRing({ set }) {
 function SetCard({ set, onOpen, onEdit, onDelete, onDuplicate, onComplete }) {
   const total = totalSeconds(set)
   const streak = computeStreak(set)
-  const todayK = dateKey(new Date())
-  const dueToday = isScheduled(set, new Date())
+  const activeDate = streakDate()
+  const todayK = dateKey(activeDate)
+  const dueToday = isScheduled(set, activeDate)
   const doneToday = isDoneForToday(set)
   const frozenToday = Boolean(set.freezes?.[todayK])
   const flameLit = !(dueToday && !doneToday && !frozenToday)
@@ -222,9 +226,10 @@ export default function Home({ sets, onAdd, onOpen, onEdit, onDelete, onDuplicat
   const todo = []
   const done = []
   for (const s of sets) {
-    const dueToday = isScheduled(s, new Date())
+    const activeDate = streakDate()
+    const dueToday = isScheduled(s, activeDate)
     const isDone = isDoneForToday(s)
-    const frozen = Boolean(s.freezes?.[dateKey(new Date())])
+    const frozen = Boolean(s.freezes?.[dateKey(activeDate)])
     if (dueToday && !isDone && !frozen) todo.push(s)
     else done.push(s)
   }
@@ -242,7 +247,7 @@ export default function Home({ sets, onAdd, onOpen, onEdit, onDelete, onDuplicat
             title="New set"
             aria-label="New set"
           >
-            <Icon name="add-circle" size={44} />
+            <Icon name="plus" size={22} />
           </button>
         )}
       </div>
@@ -257,13 +262,13 @@ export default function Home({ sets, onAdd, onOpen, onEdit, onDelete, onDuplicat
             title="Create your first set"
             aria-label="Create your first set"
           >
-            <Icon name="add-circle" size={44} />
+            <Icon name="plus" size={22} />
           </button>
         </div>
       ) : (
         <>
           {todo.length > 0 && (
-            <section className="home-section">
+            <section className="home-section todo-section">
               <h2 className="section-title">To do today</h2>
               <div className="card-grid">{todo.map(renderCard)}</div>
             </section>
@@ -287,14 +292,14 @@ export default function Home({ sets, onAdd, onOpen, onEdit, onDelete, onDuplicat
                 className="chooser-btn timer"
                 onClick={() => { setChoosing(false); onAdd('timer') }}
               >
-                <Icon name="timer-2" size={40} />
+                <ClockRegular className="gi" fontSize={40} aria-hidden="true" />
                 <span>Timer</span>
               </button>
               <button
                 className="chooser-btn task"
                 onClick={() => { setChoosing(false); onAdd('task') }}
               >
-                <Icon name="task" size={40} />
+                <ClipboardTaskRegular className="gi" fontSize={40} aria-hidden="true" />
                 <span>Task</span>
               </button>
             </div>

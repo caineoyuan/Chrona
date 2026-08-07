@@ -13,8 +13,8 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(data.title || 'Chrona', {
       body: data.body,
       tag: data.tag,
-      icon: '/timer-shutter.png',
-      badge: '/timer-shutter.png',
+      icon: data.icon || '/timer-shutter.png',
+      badge: data.icon || '/timer-shutter.png',
     }),
   )
 })

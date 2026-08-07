@@ -1,6 +1,7 @@
 // Date + streak/freeze helpers for Chrona.
 
 const DAY = 86400000
+export const STREAK_GRACE_MINUTES = 30
 
 export function startOfDay(d = new Date()) {
   const x = new Date(d)
@@ -20,7 +21,16 @@ export function addDays(d, n) {
   return startOfDay(new Date(startOfDay(d).getTime() + n * DAY))
 }
 
-export const todayKey = () => dateKey()
+// A streak day remains active through the 12:30 AM minute on the following day.
+export function streakDate(d = new Date()) {
+  const x = new Date(d)
+  if (x.getHours() === 0 && x.getMinutes() <= STREAK_GRACE_MINUTES) {
+    x.setDate(x.getDate() - 1)
+  }
+  return x
+}
+
+export const todayKey = (d = new Date()) => dateKey(streakDate(d))
 
 const WEEK = 7 * DAY
 
@@ -142,9 +152,9 @@ function prevScheduled(set, from) {
 }
 
 // Last `count` scheduled occurrence dates up to today (oldest first).
-export function lastScheduledDates(set, count = 7) {
+export function lastScheduledDates(set, count = 7, from = streakDate()) {
   const out = []
-  let d = recentScheduled(set, new Date())
+  let d = recentScheduled(set, from)
   for (let i = 0; i < count; i++) {
     out.unshift(d)
     d = prevScheduled(set, d)
@@ -155,10 +165,10 @@ export function lastScheduledDates(set, count = 7) {
 // Consecutive completed/frozen scheduled occurrences ending at the most recent
 // past occurrence. Today counts only if already done; if today is scheduled but
 // not yet done it is treated as "in progress" and does not break the streak.
-export function computeStreak(set) {
+export function computeStreak(set, now = new Date()) {
   if (!set.trackStreak) return 0
-  if (normalizeSchedule(set).mode === 'weekly') return computeWeeklyStreak(set)
-  let d = recentScheduled(set, new Date())
+  if (normalizeSchedule(set).mode === 'weekly') return computeWeeklyStreak(set, now)
+  let d = recentScheduled(set, streakDate(now))
   if (!isDone(set, d)) {
     // most recent occurrence (possibly today) not done yet -> start from prior
     d = prevScheduled(set, d)
@@ -174,13 +184,13 @@ export function computeStreak(set) {
 }
 
 // ── Weekly-target mode ─────────────────────────────────────────────
-// Goal: complete the set N times within a week (Sun..Sat). Weeks are
-// evaluated at Saturday 23:59. Any day counts; a day counts at most once.
+// Goal: complete the set N times within a week (Sun..Sat). Weeks roll over
+// Sunday at 12:30 AM. Any day counts; a day counts at most once.
 
 export const weeklyTarget = (set) => normalizeSchedule(set).timesPerWeek
 
 // Distinct completed/frozen days within the week containing `date`.
-export function weeklyCount(set, date = new Date()) {
+export function weeklyCount(set, date = streakDate()) {
   const ws = startOfWeek(date)
   const we = addDays(ws, 7)
   const keys = new Set([
@@ -197,10 +207,10 @@ export function weeklyCount(set, date = new Date()) {
 
 // Consecutive *past* weeks that met the target, plus the current week if it
 // already met. Current week not-yet-met is "in progress" (doesn't break).
-export function computeWeeklyStreak(set) {
+export function computeWeeklyStreak(set, now = new Date()) {
   if (!set.trackStreak) return 0
   const target = weeklyTarget(set)
-  let weekStart = startOfWeek(new Date())
+  let weekStart = startOfWeek(streakDate(now))
   let streak = 0
   if (weeklyCount(set, weekStart) >= target) streak++
   weekStart = addDays(weekStart, -7)
@@ -218,14 +228,14 @@ export function ringColor(p) {
   if (p >= 1) return '#1DB954'
   if (p < 0.25) return '#ef4444'
   if (p < 0.5) return '#f97316'
-  if (p < 0.75) return '#facc15'
+  if (p < 0.75) return 'var(--gold)'
   return '#9ACD32'
 }
 
 // 1 freeze earned per 2 weeks since creation.
 export function earnedFreezes(set) {
   const created = startOfDay(new Date(set.createdAt || Date.now()))
-  const days = Math.floor((startOfDay(new Date()) - created) / DAY)
+  const days = Math.floor((startOfDay(streakDate()) - created) / DAY)
   return Math.floor(days / 14)
 }
 
@@ -238,12 +248,12 @@ export function availableFreezes(set) {
 }
 
 // The occurrence a freeze protects: the soonest *upcoming* scheduled deadline
-// that hasn't been completed yet. A day's deadline is local midnight, so today
-// still counts as upcoming until then. Frozen dates are intentionally NOT
+// that hasn't been completed yet. A day's deadline is 12:30 AM the next day.
+// Frozen dates are intentionally NOT
 // skipped — the freeze stays "selected" on its instance until that deadline
 // passes (then this advances to the next occurrence) or the set is completed.
-export function freezableDate(set) {
-  let d = startOfDay(new Date())
+export function freezableDate(set, now = new Date()) {
+  let d = startOfDay(streakDate(now))
   for (let i = 0; i < 3650; i++) {
     if (isScheduled(set, d) && !set.completions?.[dateKey(d)]) return d
     d = addDays(d, 1)
@@ -316,17 +326,17 @@ export function scheduleLabel(set) {
 
 // Is this set already satisfied for today's view (either today or the current
 // scheduled cycle is marked done)?
-export function isDoneForToday(set) {
-  const k = todayKey()
-  const cycleKey = dateKey(lastScheduledDates(set, 1)[0])
+export function isDoneForToday(set, now = new Date()) {
+  const k = todayKey(now)
+  const cycleKey = dateKey(lastScheduledDates(set, 1, streakDate(now))[0])
   return Boolean(set.completions?.[k] || set.completions?.[cycleKey])
 }
 
 // Toggle today's completion, keeping the schedule cycle in sync and releasing
 // an unused freeze when completing. Returns the updated set and the new state.
-export function toggleSetCompleteToday(set) {
-  const k = todayKey()
-  const cycleKey = dateKey(lastScheduledDates(set, 1)[0])
+export function toggleSetCompleteToday(set, now = new Date()) {
+  const k = todayKey(now)
+  const cycleKey = dateKey(lastScheduledDates(set, 1, streakDate(now))[0])
   const completions = { ...set.completions }
   const freezes = { ...set.freezes }
   const wasComplete = Boolean(completions[k] || completions[cycleKey])

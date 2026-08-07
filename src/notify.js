@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { isScheduled, todayKey } from './lib.js'
+import { isScheduled, streakDate, todayKey } from './lib.js'
 
 // Notifications default ON unless a set explicitly opts out.
 const notifyOn = (set) => set.notify !== false
@@ -26,7 +26,7 @@ function show(set, when) {
   const body =
     when === 'morning'
       ? `Make sure to do your “${set.name}” today to keep your streak going!`
-      : `Last chance! Do your “${set.name}” before midnight!`
+      : `Last chance! Do your “${set.name}” before 12:30 AM!`
   try {
     new Notification(title, { body, tag: `${set.id}-${todayKey()}-${when}` })
   } catch {
@@ -38,19 +38,18 @@ function show(set, when) {
 function dueAndPending(set) {
   return (
     notifyOn(set) &&
-    isScheduled(set, new Date()) &&
+    isScheduled(set, streakDate()) &&
     !set.completions?.[todayKey()] &&
     !set.freezes?.[todayKey()]
   )
 }
 
-// Schedule today's two reminders (12 AM and 11:30 PM) and refresh at midnight.
-// Reminders fire only while the app is open; a fresh 12 AM reminder fires if the
+// Schedule today's two reminders (12:31 AM and 11:30 PM) and refresh after the grace period.
+// Reminders fire only while the app is open; a fresh 12:31 AM reminder fires if the
 // app is opened on a due day before completion. Returns a cleanup fn.
 export function scheduleReminders(sets) {
   const timers = []
   const now = new Date()
-  const fired = new Set()
 
   const at = (h, m) => {
     const t = new Date(now)
@@ -58,7 +57,7 @@ export function scheduleReminders(sets) {
     return t.getTime()
   }
   const plan = [
-    { when: 'morning', ms: at(0, 0) },
+    { when: 'morning', ms: at(0, 31) },
     { when: 'evening', ms: at(23, 30) },
   ]
   for (const p of plan) {
@@ -72,9 +71,10 @@ export function scheduleReminders(sets) {
       timers.push(setTimeout(run, delay))
     }
   }
-  // Re-plan after next midnight.
+  // Re-plan when the next streak day starts.
   const tomorrow = new Date(now)
-  tomorrow.setHours(24, 0, 30, 0)
+  tomorrow.setHours(0, 31, 0, 0)
+  if (tomorrow <= now) tomorrow.setDate(tomorrow.getDate() + 1)
   const reset = setTimeout(() => {
     timers.forEach(clearTimeout)
     window.dispatchEvent(new Event('chrona-replan'))

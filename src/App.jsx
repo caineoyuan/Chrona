@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useSets, newSet, uid } from './storage.js'
-import { todayKey } from './lib.js'
+import { STREAK_GRACE_MINUTES, todayKey } from './lib.js'
 import { useReminders } from './notify.js'
 import { subscribePush } from './push.js'
 import { useAuth } from './auth.jsx'
@@ -11,7 +11,66 @@ import RunView from './components/RunView.jsx'
 import Login from './components/Login.jsx'
 import Profile from './components/Profile.jsx'
 
-// Re-render at local midnight (and on refocus) so date-based values stay fresh.
+const MediraApp = lazy(() => import('./medira/App.jsx'))
+const WORKSPACE_STORAGE_KEY = 'chrona-last-workspace'
+const LEGACY_MEDIRA_WORKSPACE = 'dosewell'
+const THEME_STORAGE_KEY = 'chrona-theme-preference'
+
+function loadWorkspace() {
+  try {
+    const savedWorkspace = localStorage.getItem(WORKSPACE_STORAGE_KEY)
+    if (savedWorkspace === LEGACY_MEDIRA_WORKSPACE) {
+      localStorage.setItem(WORKSPACE_STORAGE_KEY, 'medira')
+      return 'medira'
+    }
+    return savedWorkspace === 'medira' ? 'medira' : 'chrona'
+  } catch {
+    return 'chrona'
+  }
+}
+
+function loadThemePreference() {
+  try {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY)
+    return ['system', 'light', 'dark'].includes(saved) ? saved : 'system'
+  } catch {
+    return 'system'
+  }
+}
+
+function useThemePreference() {
+  const [preference, setPreference] = useState(loadThemePreference)
+  const [systemTheme, setSystemTheme] = useState(() =>
+    window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+  )
+  const resolvedTheme = preference === 'system' ? systemTheme : preference
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const update = (event) => setSystemTheme(event.matches ? 'dark' : 'light')
+    update(media)
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = resolvedTheme
+    document.documentElement.style.colorScheme = resolvedTheme
+    document.querySelector('meta[name="theme-color"]')?.setAttribute(
+      'content',
+      resolvedTheme === 'light' ? '#f7f7f4' : '#131313',
+    )
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, preference)
+    } catch {
+      // The selected theme still applies for the current session.
+    }
+  }, [preference, resolvedTheme])
+
+  return { preference, resolvedTheme, setPreference }
+}
+
+// Re-render just after the 12:30 AM grace minute ends (and on refocus).
 function useDayKey() {
   const [day, setDay] = useState(todayKey())
   useEffect(() => {
@@ -19,7 +78,8 @@ function useDayKey() {
     const schedule = () => {
       const now = new Date()
       const next = new Date(now)
-      next.setHours(24, 0, 0, 0) // next local midnight
+      next.setHours(0, STREAK_GRACE_MINUTES + 1, 0, 0)
+      if (next <= now) next.setDate(next.getDate() + 1)
       timer = setTimeout(() => {
         setDay(todayKey())
         schedule()
@@ -42,6 +102,7 @@ function useDayKey() {
 
 export default function App() {
   const { user, loading } = useAuth()
+  const theme = useThemePreference()
 
   if (loading) {
     return (
@@ -53,12 +114,13 @@ export default function App() {
 
   if (!user) return <Login />
 
-  return <Workspace />
+  return <Workspace theme={theme} />
 }
 
-function Workspace() {
+function Workspace({ theme }) {
   const [sets, setSets, loaded] = useSets()
-  // Re-render the whole tree at local midnight (and on refocus) so date-based
+  const [appMode, setAppMode] = useState(loadWorkspace)
+  // Re-render after the 12:30 AM streak deadline (and on refocus) so date-based
   // values — streaks, today's completion, freezable date — never go stale.
   useDayKey()
   useReminders(sets)
@@ -74,6 +136,18 @@ function Workspace() {
   const [view, setView] = useState({ name: 'home' })
   const [dir, setDir] = useState('forward')
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(WORKSPACE_STORAGE_KEY, appMode)
+    } catch {
+      // The workspace still switches normally when storage is unavailable.
+    }
+  }, [appMode])
+
+  useEffect(() => {
+    document.title = appMode === 'medira' ? 'Medira' : 'Chrona'
+  }, [appMode])
+
   const go = (next, direction = 'forward') => {
     setDir(direction)
     setView(next)
@@ -82,13 +156,14 @@ function Workspace() {
   const fromPop = useRef(false)
   const didInit = useRef(false)
   useEffect(() => {
-    window.history.replaceState({ view: { name: 'home' }, profileOpen: false }, '')
+    window.history.replaceState({ view: { name: 'home' }, profileOpen: false, appMode }, '')
     const onPop = (e) => {
       const st = e.state || { view: { name: 'home' }, profileOpen: false }
       fromPop.current = true
       setDir('back')
       setView(st.view || { name: 'home' })
       setProfileOpen(!!st.profileOpen)
+      setAppMode(st.appMode || 'chrona')
     }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
@@ -103,8 +178,8 @@ function Workspace() {
       didInit.current = true
       return
     }
-    window.history.pushState({ view, profileOpen }, '')
-  }, [view, profileOpen])
+    window.history.pushState({ view, profileOpen, appMode }, '')
+  }, [view, profileOpen, appMode])
 
   const upsertSet = (set) =>
     setSets((prev) => {
@@ -142,25 +217,43 @@ function Workspace() {
   const current = sets.find((s) => s.id === view.id)
 
   return (
-    <div className="app">
+    <div className={`app workspace-${appMode}`}>
       <header className="topbar">
-        <button className="brand" onClick={() => go({ name: 'home' }, 'back')}>
-          <Icon name="timer" size={26} className="brand-mark" />
-          <span className="brand-name">Chrona</span>
+        <button className="brand" onClick={() => { setAppMode('chrona'); go({ name: 'home' }, 'back') }}>
+          <span key={appMode} className={`brand-content slide-${appMode === 'medira' ? 'left' : 'right'}`}>
+            {appMode === 'medira'
+              ? <img className="brand-mark workspace-brand-image" src="/medication-icon.png" alt="" aria-hidden="true" />
+              : <Icon name="timer" size={26} className="brand-mark" />}
+            <span className="brand-name">{appMode === 'medira' ? 'Medira' : 'Chrona'}</span>
+          </span>
         </button>
+        <div className="app-switcher" role="tablist" aria-label="Apps">
+          <button className={`icon-btn app-switch-btn ${appMode === 'chrona' ? 'active' : ''}`}
+            role="tab" aria-selected={appMode === 'chrona'} aria-label="Chrona" title="Chrona"
+            onClick={() => setAppMode('chrona')}>
+            <Icon name="timer" size={22} />
+          </button>
+          <button className={`icon-btn app-switch-btn ${appMode === 'medira' ? 'active' : ''}`}
+            role="tab" aria-selected={appMode === 'medira'} aria-label="Medira" title="Medira"
+            onClick={() => setAppMode('medira')}>
+            <img src="/medication-icon.png" alt="" aria-hidden="true" />
+          </button>
+        </div>
         <button
           className="icon-btn profile-btn"
           onClick={() => setProfileOpen(true)}
           title="Profile"
           aria-label="Profile"
         >
-          <Icon name="profile" size={28} />
+          <Icon name="gear" size={24} />
         </button>
       </header>
 
-      {profileOpen && <Profile onClose={() => setProfileOpen(false)} />}
+      {profileOpen && <Profile onClose={() => setProfileOpen(false)}
+        themePreference={theme.preference} onThemeChange={theme.setPreference} />}
 
       <main className="content">
+        {appMode === 'chrona' ? (
         <div className={`view-anim ${dir}`} key={`${view.name}-${view.id || ''}`}>
         {view.name === 'home' && (
           <Home
@@ -208,16 +301,23 @@ function Workspace() {
           />
         )}
         </div>
+        ) : (
+          <Suspense fallback={<div className="workspace-loading" aria-label="Loading Medira" />}>
+            <MediraApp colorScheme={theme.resolvedTheme} />
+          </Suspense>
+        )}
       </main>
 
       <footer className="app-footer">
         <a
-          href="https://www.flaticon.com/free-icons/camera"
+          href={appMode === 'chrona'
+            ? 'https://www.flaticon.com/free-icons/camera'
+            : 'https://www.flaticon.com/free-icon/pill_3567506'}
           target="_blank"
           rel="noopener noreferrer"
-          title="shutter icons created by Flaticon"
+          title={appMode === 'chrona' ? 'Shutter icons created by Flaticon' : 'Medication icon created by Freepik'}
         >
-          Shutter icon by Flaticon
+          {appMode === 'chrona' ? 'Shutter icon by Flaticon' : 'Medication icon by Freepik — Flaticon'}
         </a>
       </footer>
     </div>

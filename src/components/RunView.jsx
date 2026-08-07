@@ -43,7 +43,7 @@ const RestartGlyph = () => (
 function fillColor(p) {
   if (p < 0.25) return '#ef4444'
   if (p < 0.5) return '#f97316'
-  if (p < 0.75) return '#facc15'
+  if (p < 0.75) return 'var(--gold)'
   return '#9ACD32'
 }
 

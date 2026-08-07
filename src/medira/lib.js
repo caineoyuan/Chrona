@@ -1,0 +1,404 @@
+const MINUTE = 60 * 1000
+const DAY = 24 * 60 * MINUTE
+export const ON_TIME_WINDOW = 30 * MINUTE
+
+export function inventoryInteger(value, fallback = 0) {
+  const number = Number(value)
+  return Number.isFinite(number) ? Math.max(0, Math.round(number)) : fallback
+}
+
+export function updateTimeDigit(value, index, digit) {
+  if (!/^\d$/.test(digit) || index < 0 || index > 3) return value
+  const digits = value.replace(/\D/g, '').padEnd(4, '0').slice(0, 4).split('')
+  const candidate = [...digits]
+  candidate[index] = digit
+  if (index === 0 && digit === '2' && Number(candidate[1]) > 3) candidate[1] = '0'
+  const hours = Number(candidate.slice(0, 2).join(''))
+  const minutes = Number(candidate.slice(2).join(''))
+  if (hours > 23 || minutes > 59) return value
+  return `${candidate[0]}${candidate[1]}:${candidate[2]}${candidate[3]}`
+}
+
+export function parsePastedTime(value) {
+  const digits = value.replace(/\D/g, '')
+  if (digits.length !== 4) return null
+  const hours = Number(digits.slice(0, 2))
+  const minutes = Number(digits.slice(2))
+  return hours <= 23 && minutes <= 59 ? `${digits.slice(0, 2)}:${digits.slice(2)}` : null
+}
+
+export function wakingHourSchedule(intervalHours) {
+  const interval = Math.min(12, Math.max(3, Math.round(Number(intervalHours) || 3)))
+  const times = []
+  for (let hour = 9; hour <= 23; hour += interval) {
+    times.push(`${String(hour).padStart(2, '0')}:00`)
+  }
+  return times
+}
+
+export function timesForScheduleType(currentType, nextType, currentTimes, intervalHours) {
+  if (nextType === 'interval') return wakingHourSchedule(intervalHours)
+  if (currentType === 'interval') return ['08:00']
+  return currentTimes
+}
+
+function atTime(date, time) {
+  const [hours, minutes] = time.split(':').map(Number)
+  const result = new Date(date)
+  result.setHours(hours, minutes, 0, 0)
+  return result
+}
+
+function doseKey(medicationId, scheduledAt) {
+  return `${medicationId}-${scheduledAt.toISOString()}`
+}
+
+function recordFor(medication, scheduledAt) {
+  return medication.history.find((entry) => entry.scheduledAt === scheduledAt.toISOString())
+}
+
+function scheduleFor(medication) {
+  return { type: 'daily', intervalHours: 12, intervalDays: 7, weekdays: [], anchorAt: null, changes: [], ...medication.schedule }
+}
+
+function scheduleForDay(medication, day) {
+  const current = { ...scheduleFor(medication), times: medication.times }
+  const endOfDay = new Date(day)
+  endOfDay.setHours(24, 0, 0, 0)
+  return [...current.changes].reverse().reduce((config, change) => {
+    return endOfDay <= new Date(change.effectiveAt) ? { ...config, ...change.previous } : config
+  }, current)
+}
+
+function scheduledTimesForDay(medication, day) {
+  const schedule = scheduleForDay(medication, day)
+  if (schedule.type === 'weekly' && !schedule.weekdays.includes(day.getDay())) return []
+  if (schedule.type === 'day-interval') {
+    const anchor = new Date(schedule.anchorAt || medication.createdAt)
+    const anchorDay = Date.UTC(anchor.getFullYear(), anchor.getMonth(), anchor.getDate())
+    const currentDay = Date.UTC(day.getFullYear(), day.getMonth(), day.getDate())
+    const elapsedDays = Math.round((currentDay - anchorDay) / DAY)
+    const intervalDays = Math.min(30, Math.max(2, Number(schedule.intervalDays) || 7))
+    if (elapsedDays < 0 || elapsedDays % intervalDays !== 0) return []
+  }
+
+  if (schedule.type !== 'interval' || !schedule.anchorAt) {
+    return schedule.times.map((time, slotIndex) => ({ scheduledAt: atTime(day, time), time, slotIndex }))
+  }
+
+  const interval = Math.max(1, Number(schedule.intervalHours) || 1) * 60 * MINUTE
+  const anchor = new Date(schedule.anchorAt)
+  const start = new Date(day)
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(start.getTime() + DAY)
+  const firstIndex = Math.max(0, Math.ceil((start - anchor) / interval))
+  const results = []
+  for (let index = firstIndex; ; index += 1) {
+    const scheduledAt = new Date(anchor.getTime() + index * interval)
+    if (scheduledAt >= end) break
+    if (scheduledAt >= start) {
+      results.push({
+        scheduledAt,
+        time: scheduledAt.toTimeString().slice(0, 5),
+        slotIndex: index,
+      })
+    }
+  }
+  return results
+}
+
+export function isActiveAt(medication, value) {
+  const timestamp = new Date(value).getTime()
+  return !(medication.pausePeriods || []).some((period) => {
+    const start = new Date(period.start).getTime()
+    const end = period.end ? new Date(period.end).getTime() : Infinity
+    return timestamp >= start && timestamp <= end
+  })
+}
+
+export function getDosesForDay(medications, day = new Date()) {
+  return medications.flatMap((medication) => scheduledTimesForDay(medication, day).map(({ scheduledAt, time, slotIndex }) => {
+    if (scheduledAt < new Date(medication.createdAt) || !isActiveAt(medication, scheduledAt)) return null
+    return { medication, time, slotIndex, scheduledAt, record: recordFor(medication, scheduledAt), key: doseKey(medication.id, scheduledAt) }
+  }).filter(Boolean)).sort((a, b) => a.scheduledAt - b.scheduledAt)
+}
+
+export function getActionableDoses(medications, now = new Date()) {
+  const today = getDosesForDay(medications, now)
+  const scheduledToday = new Set(today.map((dose) => dose.medication.id))
+  const overdue = []
+
+  for (const medication of medications) {
+    if (scheduleFor(medication).type !== 'day-interval' || scheduledToday.has(medication.id)) continue
+    for (let offset = 1; offset <= 30; offset += 1) {
+      const day = new Date(now)
+      day.setDate(day.getDate() - offset)
+      const doses = scheduledTimesForDay(medication, day)
+        .filter(({ scheduledAt }) => scheduledAt >= new Date(medication.createdAt) && isActiveAt(medication, scheduledAt))
+      if (!doses.length) continue
+
+      for (const { scheduledAt, time, slotIndex } of doses) {
+        const scheduledAtIso = scheduledAt.toISOString()
+        const handled = medication.history.some((entry) => entry.scheduledAt === scheduledAtIso || entry.originalScheduledAt === scheduledAtIso)
+        if (!handled) {
+          overdue.push({ medication, time, slotIndex, scheduledAt, record: null, key: doseKey(medication.id, scheduledAt) })
+        }
+      }
+      break
+    }
+  }
+
+  return [...overdue, ...today].sort((a, b) => a.scheduledAt - b.scheduledAt)
+}
+
+export function getRecentDoses(medications, now = new Date(), days = 7) {
+  const doses = []
+  for (let offset = days - 1; offset >= 0; offset -= 1) {
+    const day = new Date(now)
+    day.setDate(day.getDate() - offset)
+    day.setHours(12, 0, 0, 0)
+    for (const medication of medications) {
+      if (new Date(medication.createdAt) > new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1)) continue
+      for (const { scheduledAt, time, slotIndex } of scheduledTimesForDay(medication, day)) {
+        if (scheduledAt < new Date(medication.createdAt) || !isActiveAt(medication, scheduledAt)) continue
+        doses.push({ medication, time, slotIndex, scheduledAt, record: recordFor(medication, scheduledAt), key: doseKey(medication.id, scheduledAt) })
+      }
+    }
+  }
+  return doses.sort((a, b) => a.scheduledAt - b.scheduledAt)
+}
+
+export function getNextDose(medications, now = new Date()) {
+  const candidates = []
+  for (let offset = 0; offset <= 32; offset += 1) {
+    const day = new Date(now)
+    day.setDate(day.getDate() + offset)
+    for (const medication of medications) {
+      for (const { scheduledAt, time, slotIndex } of scheduledTimesForDay(medication, day)) {
+        if (scheduledAt >= now && isActiveAt(medication, scheduledAt) && !recordFor(medication, scheduledAt)) {
+          candidates.push({ medication, time, slotIndex, scheduledAt })
+        }
+      }
+    }
+  }
+  return candidates.sort((a, b) => a.scheduledAt - b.scheduledAt)[0] || null
+}
+
+export function getNextReminder(medications, now = new Date()) {
+  const candidates = []
+  for (let offset = 0; offset <= 32; offset += 1) {
+    const day = new Date(now)
+    day.setDate(day.getDate() + offset)
+    for (const medication of medications) {
+      if (medication.notifications?.enabled === false) continue
+      for (const { scheduledAt, time, slotIndex } of scheduledTimesForDay(medication, day)) {
+        const alertAt = new Date(scheduledAt.getTime() - (medication.notifications?.advanceMinutes || 0) * MINUTE)
+        if (alertAt >= now && isActiveAt(medication, scheduledAt) && !recordFor(medication, scheduledAt)) {
+          candidates.push({ medication, time, slotIndex, scheduledAt, alertAt })
+        }
+      }
+    }
+  }
+  return candidates.sort((a, b) => a.alertAt - b.alertAt)[0] || null
+}
+
+export function getUpcomingReminders(medications, now = new Date(), days = 32) {
+  const reminders = []
+  for (let offset = 0; offset <= days; offset += 1) {
+    const day = new Date(now)
+    day.setDate(day.getDate() + offset)
+    for (const medication of medications) {
+      if (medication.notifications?.enabled === false) continue
+      for (const { scheduledAt, time } of scheduledTimesForDay(medication, day)) {
+        const advanceMinutes = medication.notifications?.advanceMinutes || 0
+        const alertAt = new Date(scheduledAt.getTime() - advanceMinutes * MINUTE)
+        if (scheduledAt < now || alertAt < now || !isActiveAt(medication, scheduledAt) || recordFor(medication, scheduledAt)) continue
+        const prefix = advanceMinutes ? `${advanceMinutes} minutes until the scheduled dose` : 'Scheduled dose'
+        reminders.push({
+          id: `${medication.id}-${scheduledAt.toISOString()}`,
+          medicationId: medication.id,
+          alertAt: alertAt.toISOString(),
+          scheduledAt: scheduledAt.toISOString(),
+          title: medication.name,
+          body: `${prefix} · ${medication.dose || medication.notes || ''}`,
+          tag: `dose-${medication.id}-${time}`,
+          icon: medication.trackInjectionSite ? '/syringe-icon.svg' : '/medication-icon.png',
+        })
+      }
+    }
+  }
+  return reminders.sort((a, b) => new Date(a.alertAt) - new Date(b.alertAt))
+}
+
+export function getDoseWindow(medication, scheduledAt) {
+  const all = []
+  for (let offset = -32; offset <= 0; offset += 1) {
+    const day = new Date(scheduledAt)
+    day.setDate(day.getDate() + offset)
+    scheduledTimesForDay(medication, day).forEach((dose) => all.push(dose.scheduledAt))
+  }
+  const previous = all.filter((date) => date < scheduledAt).sort((a, b) => b - a)[0] || new Date(scheduledAt - DAY)
+  return { previous, scheduledAt }
+}
+
+export function getLastTaken(medication) {
+  return medication.history
+    .filter((record) => record.takenAt)
+    .sort((a, b) => new Date(b.takenAt) - new Date(a.takenAt))[0] || null
+}
+
+export function getRecentInjectionSites(medication, limit = 2) {
+  return [...medication.history]
+    .filter((record) => record.injectionSite)
+    .sort((a, b) => new Date(b.takenAt) - new Date(a.takenAt))
+    .slice(0, limit)
+    .map((record) => record.injectionSite)
+}
+
+export function medicationCalendarMonths(medication, now = new Date()) {
+  const takenDates = medication.history.filter((record) => record.takenAt).map((record) => new Date(record.takenAt))
+  const counts = takenDates.reduce((days, date) => {
+    const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+    days.set(key, (days.get(key) || 0) + 1)
+    return days
+  }, new Map())
+  const earliest = takenDates.reduce((first, date) => date < first ? date : first, now)
+  const cursor = new Date(now.getFullYear(), now.getMonth(), 1)
+  const firstMonth = new Date(earliest.getFullYear(), earliest.getMonth(), 1)
+  const months = []
+
+  while (cursor >= firstMonth) {
+    const year = cursor.getFullYear()
+    const month = cursor.getMonth()
+    const totalDays = new Date(year, month + 1, 0).getDate()
+    months.push({
+      key: `${year}-${month}`,
+      label: cursor.toLocaleDateString([], { month: 'long', year: 'numeric' }),
+      leadingDays: new Date(year, month, 1).getDay(),
+      days: Array.from({ length: totalDays }, (_, index) => {
+        const day = index + 1
+        return { day, count: counts.get(`${year}-${month}-${day}`) || 0 }
+      }),
+    })
+    cursor.setMonth(cursor.getMonth() - 1)
+  }
+  return months
+}
+
+export function adjustScheduleAfterDose(medication, dose, takenAt) {
+  const schedule = scheduleFor(medication)
+  const shiftedAt = new Date(takenAt)
+  shiftedAt.setSeconds(0, 0)
+  const reanchorDayInterval = schedule.type === 'day-interval' && shiftedAt.getTime() !== dose.scheduledAt.getTime()
+  const shifted = reanchorDayInterval
+    || (takenAt - dose.scheduledAt > ON_TIME_WINDOW && (schedule.type === 'daily' || schedule.type === 'interval'))
+  return {
+    shifted,
+    scheduledAt: shifted ? shiftedAt : dose.scheduledAt,
+    originalScheduledAt: shifted ? dose.scheduledAt : null,
+    times: shifted && (schedule.type === 'daily' || schedule.type === 'day-interval')
+      ? medication.times.map((time, index) => index === dose.slotIndex ? shiftedAt.toTimeString().slice(0, 5) : time)
+      : medication.times,
+    schedule: shifted
+      ? {
+          ...schedule,
+          anchorAt: schedule.type === 'interval' || schedule.type === 'day-interval' ? shiftedAt.toISOString() : schedule.anchorAt,
+          changes: [...schedule.changes, {
+            effectiveAt: shiftedAt.toISOString(),
+            previous: {
+              type: schedule.type,
+              intervalHours: schedule.intervalHours,
+              intervalDays: schedule.intervalDays,
+              weekdays: schedule.weekdays,
+              anchorAt: schedule.anchorAt,
+              times: medication.times,
+            },
+          }],
+        }
+      : medication.schedule,
+  }
+}
+
+export function undoScheduleAfterDose(medication, record) {
+  const schedule = scheduleFor(medication)
+  if (!record.originalScheduledAt || !schedule.changes.length) {
+    return { times: medication.times, schedule: medication.schedule }
+  }
+  const changeIndex = schedule.changes.findLastIndex((change) => change.effectiveAt === record.scheduledAt)
+  if (changeIndex !== schedule.changes.length - 1) {
+    return { times: medication.times, schedule: medication.schedule }
+  }
+  const previous = schedule.changes[changeIndex].previous
+  return {
+    times: previous.times,
+    schedule: {
+      ...schedule,
+      type: previous.type,
+      intervalHours: previous.intervalHours,
+      intervalDays: previous.intervalDays,
+      weekdays: previous.weekdays,
+      anchorAt: previous.anchorAt,
+      changes: schedule.changes.slice(0, changeIndex),
+    },
+  }
+}
+
+export function overrideScheduledTime(medication, dose, time) {
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+    return { times: medication.times, schedule: medication.schedule, scheduledAt: dose.scheduledAt }
+  }
+  const schedule = scheduleFor(medication)
+  const scheduledAt = atTime(dose.scheduledAt, time)
+  const times = schedule.type === 'interval'
+    ? medication.times
+    : medication.times.map((current, index) => index === dose.slotIndex ? time : current)
+  return {
+    scheduledAt,
+    times,
+    schedule: {
+      ...schedule,
+      anchorAt: schedule.type === 'interval' ? scheduledAt.toISOString() : schedule.anchorAt,
+      changes: [...schedule.changes, {
+        effectiveAt: scheduledAt.toISOString(),
+        previous: {
+          type: schedule.type,
+          intervalHours: schedule.intervalHours,
+          intervalDays: schedule.intervalDays,
+          weekdays: schedule.weekdays,
+          anchorAt: schedule.anchorAt,
+          times: medication.times,
+        },
+      }],
+    },
+  }
+}
+
+export function isOnTime(scheduledAt, takenAt) {
+  return Math.abs(takenAt - scheduledAt) <= ON_TIME_WINDOW
+}
+
+export function adherenceFor(doses, now = new Date()) {
+  const eligible = doses.filter((dose) => dose.scheduledAt <= now)
+  const onTime = eligible.filter((dose) => dose.record?.status === 'on-time').length
+  const late = eligible.filter((dose) => dose.record?.status === 'late').length
+  const missed = eligible.filter((dose) => dose.record?.status === 'skipped' || (!dose.record && now - dose.scheduledAt > ON_TIME_WINDOW)).length
+  const total = onTime + late + missed
+  const taken = onTime + late
+  return {
+    total, taken, onTime, late, missed,
+    adherence: total ? Math.round(taken / total * 100) : 100,
+    onTimeRate: taken ? Math.round(onTime / taken * 100) : 100,
+  }
+}
+
+export function formatRelative(target, now = new Date()) {
+  const minutes = Math.max(0, Math.ceil((target - now) / MINUTE))
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  const remainder = minutes % 60
+  return remainder ? `${hours}h ${remainder}m` : `${hours}h`
+}
+
+export function formatDateTime(value) {
+  return new Date(value).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}

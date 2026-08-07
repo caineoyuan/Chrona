@@ -5,6 +5,23 @@
     <link rel="icon" href="/timer-shutter.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#131313" />
+    <script>
+      (() => {
+        let saved = 'system'
+        try {
+          saved = localStorage.getItem('chrona-theme-preference') || 'system'
+        } catch {
+          // Use the system setting when storage is unavailable.
+        }
+        const theme = saved === 'system'
+          ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          : saved
+        document.documentElement.dataset.theme = theme
+        document.documentElement.style.colorScheme = theme
+        document.querySelector('meta[name="theme-color"]').content =
+          theme === 'light' ? '#f7f7f4' : '#131313'
+      })()
+    </script>
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />

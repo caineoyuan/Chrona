@@ -109,6 +109,10 @@ router.post('/register', async (req, res) => {
       userId,
       JSON.stringify([]),
     ])
+    await query('INSERT INTO user_medications (user_id, medications) VALUES ($1, $2)', [
+      userId,
+      JSON.stringify([]),
+    ])
 
     const token = signToken(userId, SESSION_DAYS)
     setAuthCookie(res, token, false)

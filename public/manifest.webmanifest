@@ -1,7 +1,7 @@
 {
   "name": "Chrona",
   "short_name": "Chrona",
-  "description": "Workout interval timer with streaks.",
+  "description": "Workout timing and medication tracking in one app.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

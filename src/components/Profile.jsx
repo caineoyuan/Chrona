@@ -29,7 +29,7 @@ function PasswordField({ value, onChange, placeholder, autoComplete }) {
   )
 }
 
-export default function Profile({ onClose }) {
+export default function Profile({ onClose, themePreference, onThemeChange }) {
   const { user, logout, changePassword } = useAuth()
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -106,17 +106,33 @@ export default function Profile({ onClose }) {
         </div>
 
         <form className="profile-form" onSubmit={submit}>
+          <section className="appearance-section">
+            <h3 className="section-title">Appearance</h3>
+            <div className="theme-options" role="radiogroup" aria-label="Color theme">
+              {['system', 'light', 'dark'].map((option) => (
+                <button key={option} type="button" role="radio"
+                  aria-checked={themePreference === option}
+                  className={themePreference === option ? 'active' : ''}
+                  onClick={() => onThemeChange(option)}>
+                  {option[0].toUpperCase() + option.slice(1)}
+                </button>
+              ))}
+            </div>
+            <p className="setting-help">System follows this device’s appearance setting.</p>
+          </section>
           {pushSupported() && (
-            <>
+            <section className="notification-section">
               <h3 className="section-title">Notifications</h3>
-              <button type="button" className="logout-btn" onClick={sendTest} title="Send a test notification">
-                Send test notification
-              </button>
-              <button type="button" className="logout-btn" onClick={reregister} title="Fix stuck notifications by re-registering this device">
-                Re-register notifications
-              </button>
+              <div className="notification-actions">
+                <button type="button" className="logout-btn" onClick={sendTest} title="Send a test notification">
+                  Send test notification
+                </button>
+                <button type="button" className="logout-btn" onClick={reregister} title="Fix stuck notifications by re-registering this device">
+                  Re-register notifications
+                </button>
+              </div>
               {testMsg && <p className="auth-success">{testMsg}</p>}
-            </>
+            </section>
           )}
           <h3 className="section-title">Change password</h3>
 
