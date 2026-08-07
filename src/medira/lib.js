@@ -504,6 +504,46 @@ export function undoScheduleAfterDose(medication, record) {
   }
 }
 
+export function removeTakenHistoryRecord(medication, recordId) {
+  const record = medication.history.find((entry) => entry.id === recordId)
+  if (!record) return medication
+  const restored = undoScheduleAfterDose(medication, record)
+  return {
+    ...medication,
+    times: restored.times,
+    schedule: restored.schedule,
+    history: medication.history.filter((entry) => entry.id !== recordId),
+    inventory: !record.takenAt || medication.inventory?.remaining == null ? medication.inventory : {
+      ...medication.inventory,
+      remaining: inventoryInteger(medication.inventory.remaining) + 1,
+    },
+  }
+}
+
+export function addTakenHistoryRecord(medication, recordId, dateKey, time, injectionSite = null, scheduledAtValue = null) {
+  const takenAt = localScheduleAnchor(dateKey, time)
+  if (!recordId || !takenAt) return medication
+  const scheduledAt = scheduledAtValue ? new Date(scheduledAtValue) : takenAt
+  if (Number.isNaN(scheduledAt.getTime())) return medication
+  const timestamp = takenAt.toISOString()
+  const scheduledTimestamp = scheduledAt.toISOString()
+  return {
+    ...medication,
+    history: [...medication.history.filter((entry) => (entry.originalScheduledAt || entry.scheduledAt) !== scheduledTimestamp), {
+      id: recordId,
+      scheduledAt: scheduledTimestamp,
+      takenAt: timestamp,
+      originalScheduledAt: null,
+      status: isOnTime(scheduledAt, takenAt) ? 'on-time' : 'late',
+      injectionSite: injectionSite || null,
+    }],
+    inventory: medication.inventory?.remaining == null ? medication.inventory : {
+      ...medication.inventory,
+      remaining: Math.max(0, inventoryInteger(medication.inventory.remaining) - 1),
+    },
+  }
+}
+
 export function overrideScheduledTime(medication, dose, time) {
   if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) {
     return { times: medication.times, schedule: medication.schedule, scheduledAt: dose.scheduledAt }

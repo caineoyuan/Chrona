@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  addTakenHistoryRecord,
   adjustScheduleAfterDose,
   adherenceFor,
   formatRelative,
@@ -20,6 +21,7 @@ import {
   overrideTakenDate,
   parsePastedTime,
   reminderOffsets,
+  removeTakenHistoryRecord,
   timePartInput,
   timesForScheduleType,
   toTwelveHourTime,
@@ -398,6 +400,28 @@ test('overrides a taken dose date, time, and injection site together', () => {
   assert.equal(takenAt.getHours(), 11)
   assert.equal(takenAt.getMinutes(), 30)
   assert.equal(updated.history[0].injectionSite, 'right-upper')
+})
+
+test('adds and removes manually recorded doses while updating inventory and last taken', () => {
+  const med = {
+    ...medication({ type: 'daily' }),
+    inventory: { remaining: 8, unit: 'doses' },
+    history: [{
+      id: 'older-dose',
+      scheduledAt: '2026-08-04T09:00:00',
+      takenAt: '2026-08-04T09:05:00',
+      status: 'on-time',
+    }],
+  }
+  const added = addTakenHistoryRecord(med, 'manual-dose', '2026-08-05', '10:30', 'right-lower')
+
+  assert.equal(added.inventory.remaining, 7)
+  assert.equal(getLastTaken(added).id, 'manual-dose')
+  assert.equal(added.history.at(-1).injectionSite, 'right-lower')
+
+  const removed = removeTakenHistoryRecord(added, 'manual-dose')
+  assert.equal(removed.inventory.remaining, 8)
+  assert.equal(getLastTaken(removed).id, 'older-dose')
 })
 
 test('builds scrollable medication history ranges into past and future months', () => {

@@ -15,6 +15,7 @@ import { SearchRegular } from '@fluentui/react-icons/svg/search'
 import { SaveRegular } from '@fluentui/react-icons/svg/save'
 import ChronaIcon from '../components/Icon'
 import {
+  addTakenHistoryRecord,
   adjustScheduleAfterDose,
   formatDateTime,
   formatReminderAdvance,
@@ -36,6 +37,7 @@ import {
   overrideTakenDate,
   parsePastedTime,
   reminderOffsets,
+  removeTakenHistoryRecord,
   timesForScheduleType,
   timePartInput,
   toTwelveHourTime,
@@ -943,6 +945,8 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
   const [futureMonths, setFutureMonths] = useState(6)
   const [selectedDate, setSelectedDate] = useState(null)
   const [historyEdits, setHistoryEdits] = useState([])
+  const [deletedRecordIds, setDeletedRecordIds] = useState([])
+  const [newDose, setNewDose] = useState(null)
   const [futureDateWarning, setFutureDateWarning] = useState(false)
   const calendarScrollRef = useRef(null)
   const calendarLoad = useRef(null)
@@ -978,8 +982,9 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
   }
 
   const selectHistoryDate = (date, monthLabel) => {
-    if (!date.events.length) return
     setSelectedDate({ ...date, monthLabel })
+    setDeletedRecordIds([])
+    setNewDose(null)
     setHistoryEdits(date.events.filter((event) => event.recordId && event.status !== 'missed' && event.status !== 'skipped').map((event) => {
       const takenAt = new Date(event.time)
       return {
@@ -1000,14 +1005,16 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
   const closeHistoryDate = () => {
     setSelectedDate(null)
     setHistoryEdits([])
+    setDeletedRecordIds([])
+    setNewDose(null)
   }
 
   const saveHistoryEdits = () => {
-    if (historyEdits.some((edit) => isFutureLocalDate(edit.dateKey, now))) {
+    if ([...historyEdits, newDose].filter(Boolean).some((edit) => isFutureLocalDate(edit.dateKey, now))) {
       setFutureDateWarning(true)
       return
     }
-    onOverrideTakenHistory(medication, historyEdits)
+    onOverrideTakenHistory(medication, historyEdits, deletedRecordIds, newDose)
     closeHistoryDate()
   }
 
@@ -1052,7 +1059,6 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
                     const label = `${month.label} ${date.day}${date.count ? `, taken ${date.count} ${date.count === 1 ? 'time' : 'times'}` : ''}${date.missedCount ? `, missed ${date.missedCount}` : ''}`
                     return <div className={`calendar-day ${date.count ? 'taken' : ''} ${date.missedCount ? 'missed' : ''}`} key={date.day}>
                       <button type="button" aria-label={label} aria-expanded={selected}
-                        disabled={!date.events.length}
                         onClick={() => selectHistoryDate(date, month.label)}>{date.day}</button>
                       {date.count > 1 && <small>{date.count} times</small>}
                       {date.count === 1 && date.injectionSites[0] && <small>{date.injectionSites[0]}</small>}
@@ -1071,35 +1077,65 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
               <SmallIconButton label="Close date details" name="close" onClick={closeHistoryDate} />
             </div>
             <div className="history-record-list">
-              {selectedDate.events.map((event, index) => (
-                event.status === 'missed' || event.status === 'skipped'
-                  ? <span key={`${event.time}-${index}`}>Missed {new Date(event.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
-                  : (() => {
-                    const edit = historyEdits.find((candidate) => candidate.recordId === event.recordId)
-                    if (!edit) return null
-                    return <fieldset className="history-dose-editor" key={event.recordId || `${event.time}-${index}`}>
-                      <legend>{historyEdits.length > 1 ? `Taken dose ${historyEdits.indexOf(edit) + 1}` : 'Taken dose'}</legend>
-                      <label>Taken date
-                        <input type="date" value={edit.dateKey}
-                          onChange={(changeEvent) => updateHistoryEdit(edit.recordId, { dateKey: changeEvent.target.value })} />
-                      </label>
-                      <div className="history-time-field">
-                        <span>Taken time</span>
-                        <TimeInput label="Taken time" value={edit.time}
-                          onChange={(time) => updateHistoryEdit(edit.recordId, { time })} />
-                      </div>
-                      {medication.trackInjectionSite && <label>Injection site
-                        <select value={edit.injectionSite}
-                          onChange={(changeEvent) => updateHistoryEdit(edit.recordId, { injectionSite: changeEvent.target.value })}>
-                          <option value="">Not recorded</option>
-                          {injectionSites.map((site) => <option value={site.id} key={site.id}>{site.label} ({INJECTION_SITE_CODES[site.id]})</option>)}
-                        </select>
-                      </label>}
-                    </fieldset>
-                  })()
+              {selectedDate.events.filter((event) => event.status === 'missed' || event.status === 'skipped').map((event, index) => (
+                <span key={`${event.time}-${index}`}>Missed {new Date(event.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
               ))}
+              {historyEdits.map((edit, index) => <fieldset className="history-dose-editor" key={edit.recordId}>
+                <legend>{historyEdits.length > 1 ? `Taken dose ${index + 1}` : 'Taken dose'}</legend>
+                <SmallIconButton label="Delete this dose" name="trash" className="danger history-delete"
+                  onClick={() => {
+                    setDeletedRecordIds((ids) => [...ids, edit.recordId])
+                    setHistoryEdits((edits) => edits.filter((candidate) => candidate.recordId !== edit.recordId))
+                  }} />
+                <label>Taken date
+                  <input type="date" value={edit.dateKey}
+                    onChange={(event) => updateHistoryEdit(edit.recordId, { dateKey: event.target.value })} />
+                </label>
+                <div className="history-time-field">
+                  <span>Taken time</span>
+                  <TimeInput label="Taken time" value={edit.time}
+                    onChange={(time) => updateHistoryEdit(edit.recordId, { time })} />
+                </div>
+                {medication.trackInjectionSite && <label>Injection site
+                  <select value={edit.injectionSite}
+                    onChange={(event) => updateHistoryEdit(edit.recordId, { injectionSite: event.target.value })}>
+                    <option value="">Not recorded</option>
+                    {injectionSites.map((site) => <option value={site.id} key={site.id}>{site.label} ({INJECTION_SITE_CODES[site.id]})</option>)}
+                  </select>
+                </label>}
+              </fieldset>)}
+              {deletedRecordIds.length > 0 && <span>{deletedRecordIds.length === 1 ? '1 dose will be deleted.' : `${deletedRecordIds.length} doses will be deleted.`}</span>}
+              {!historyEdits.length && !deletedRecordIds.length && !newDose && <div className="history-add-prompt">
+                <span>No dose is recorded for this date. Add one?</span>
+                <SmallIconButton label={`Add dose on ${formatLocalDateLong(selectedDate.dateKey)}`} name="plus"
+                  onClick={() => setNewDose({
+                    dateKey: selectedDate.dateKey,
+                    time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+                    injectionSite: '',
+                    scheduledAt: selectedDate.events.find((event) => event.status === 'missed' || event.status === 'skipped')?.time || null,
+                  })} />
+              </div>}
+              {newDose && <fieldset className="history-dose-editor">
+                <legend>Add dose</legend>
+                <label>Taken date
+                  <input type="date" value={newDose.dateKey}
+                    onChange={(event) => setNewDose((dose) => ({ ...dose, dateKey: event.target.value }))} />
+                </label>
+                <div className="history-time-field">
+                  <span>Taken time</span>
+                  <TimeInput label="New dose taken time" value={newDose.time}
+                    onChange={(time) => setNewDose((dose) => ({ ...dose, time }))} />
+                </div>
+                {medication.trackInjectionSite && <label>Injection site
+                  <select value={newDose.injectionSite}
+                    onChange={(event) => setNewDose((dose) => ({ ...dose, injectionSite: event.target.value }))}>
+                    <option value="">Not recorded</option>
+                    {injectionSites.map((site) => <option value={site.id} key={site.id}>{site.label} ({INJECTION_SITE_CODES[site.id]})</option>)}
+                  </select>
+                </label>}
+              </fieldset>}
             </div>
-            {historyEdits.length > 0 && <button type="button" className="primary-btn wide history-save" onClick={saveHistoryEdits}>Save changes</button>}
+            {(historyEdits.length > 0 || deletedRecordIds.length > 0 || newDose) && <button type="button" className="primary-btn wide history-save" onClick={saveHistoryEdits}>Save changes</button>}
           </div>
         </div>}
         {futureDateWarning && <div className="history-warning-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="future-date-warning">
@@ -1257,17 +1293,7 @@ function App({ colorScheme = 'dark' }) {
       if (medication.id !== dose.medication.id) return medication
       const record = medication.history.find((entry) => entry.id === dose.record.id)
       if (!record) return medication
-      const restored = undoScheduleAfterDose(medication, record)
-      return {
-        ...medication,
-        times: restored.times,
-        schedule: restored.schedule,
-        history: medication.history.filter((entry) => entry.id !== record.id),
-        inventory: record.status === 'skipped' || medication.inventory?.remaining == null ? medication.inventory : {
-          ...medication.inventory,
-          remaining: inventoryInteger(medication.inventory.remaining) + 1,
-        },
-      }
+      return removeTakenHistoryRecord(medication, record.id)
     }))
     setNotice(dose.record.status === 'skipped' ? `${dose.medication.name} skip undone` : `${dose.medication.name} unchecked`)
     setTimeout(() => setNotice(''), 2600)
@@ -1338,10 +1364,16 @@ function App({ colorScheme = 'dark' }) {
     }))
   }
 
-  const changeTakenHistory = (medication, edits) => {
+  const changeTakenHistory = (medication, edits, deletedRecordIds, newDose) => {
     setMedications((items) => items.map((item) => (
       item.id === medication.id
-        ? edits.reduce((updated, edit) => overrideTakenDate(updated, edit.recordId, edit.dateKey, edit.time, edit.injectionSite), item)
+        ? (() => {
+            const edited = edits.reduce((updated, edit) => overrideTakenDate(updated, edit.recordId, edit.dateKey, edit.time, edit.injectionSite), item)
+            const withoutDeleted = deletedRecordIds.reduce((updated, recordId) => removeTakenHistoryRecord(updated, recordId), edited)
+            return newDose
+              ? addTakenHistoryRecord(withoutDeleted, crypto.randomUUID(), newDose.dateKey, newDose.time, newDose.injectionSite, newDose.scheduledAt)
+              : withoutDeleted
+          })()
         : item
     )))
     setNotice(`${medication.name} history updated`)
