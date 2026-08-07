@@ -330,7 +330,7 @@ export function isFutureLocalDate(dateKey, now = new Date()) {
   return Boolean(target && target > today)
 }
 
-export function overrideTakenDate(medication, recordId, dateKey, overrideTime = null) {
+export function overrideTakenDate(medication, recordId, dateKey, overrideTime = null, injectionSite = undefined) {
   const record = medication.history.find((entry) => entry.id === recordId && entry.takenAt)
   if (!record) return medication
   const previousTakenAt = new Date(record.takenAt)
@@ -343,6 +343,7 @@ export function overrideTakenDate(medication, recordId, dateKey, overrideTime = 
     ...entry,
     takenAt: takenAt.toISOString(),
     status: Number.isNaN(scheduledAt.getTime()) ? entry.status : isOnTime(scheduledAt, takenAt) ? 'on-time' : 'late',
+    ...(injectionSite === undefined ? {} : { injectionSite: injectionSite || null }),
   })
   const latestTakenAt = wasLastTaken
     ? history.filter((entry) => entry.takenAt).map((entry) => new Date(entry.takenAt)).sort((a, b) => b - a)[0]
@@ -555,6 +556,12 @@ export function formatRelative(target, now = new Date()) {
   const minutes = Math.max(0, Math.ceil((target - now) / MINUTE))
   if (minutes < 60) return `${minutes}m`
   const hours = Math.floor(minutes / 60)
+  if (hours >= 24) {
+    const days = Math.floor(hours / 24)
+    const remainingHours = hours % 24
+    const dayLabel = `${days} ${days === 1 ? 'day' : 'days'}`
+    return remainingHours ? `${dayLabel} ${remainingHours} ${remainingHours === 1 ? 'hour' : 'hours'}` : dayLabel
+  }
   const remainder = minutes % 60
   return remainder ? `${hours}h ${remainder}m` : `${hours}h`
 }

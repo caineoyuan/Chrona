@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   adjustScheduleAfterDose,
   adherenceFor,
+  formatRelative,
   getActionableDoses,
   getDosesForDay,
   getNextDose,
@@ -73,6 +74,13 @@ test('converts AM and PM schedule times without changing local clock intent', ()
   assert.equal(toTwentyFourHourTime('12', '15', 'AM'), '00:15')
   assert.equal(toTwentyFourHourTime('12', '30', 'PM'), '12:30')
   assert.equal(toTwentyFourHourTime('9', '45', 'PM'), '21:45')
+})
+
+test('formats next-dose countdowns in days after 24 hours', () => {
+  const now = new Date('2026-08-06T09:00:00')
+  assert.equal(formatRelative(new Date('2026-08-07T09:00:00'), now), '1 day')
+  assert.equal(formatRelative(new Date('2026-08-07T10:00:00'), now), '1 day 1 hour')
+  assert.equal(formatRelative(new Date('2026-08-08T11:00:00'), now), '2 days 2 hours')
 })
 
 test('starts a fresh time part when iOS retains the selected value', () => {
@@ -369,6 +377,27 @@ test('overrides a taken date locally and re-anchors the latest every-days dose',
   assert.equal(anchorAt.getDate(), 4)
   assert.equal(isFutureLocalDate('2026-08-07', new Date(2026, 7, 6, 23, 59)), true)
   assert.equal(isFutureLocalDate('2026-08-06', new Date(2026, 7, 6, 0, 1)), false)
+})
+
+test('overrides a taken dose date, time, and injection site together', () => {
+  const med = {
+    history: [{
+      id: 'injection-dose',
+      scheduledAt: new Date(2026, 7, 6, 9, 0).toISOString(),
+      takenAt: new Date(2026, 7, 6, 9, 10).toISOString(),
+      injectionSite: 'left-lower',
+      status: 'on-time',
+    }],
+    times: ['09:00'],
+    schedule: { type: 'weekly', weekdays: [4] },
+  }
+  const updated = overrideTakenDate(med, 'injection-dose', '2026-08-05', '11:30', 'right-upper')
+  const takenAt = new Date(updated.history[0].takenAt)
+
+  assert.equal(takenAt.getDate(), 5)
+  assert.equal(takenAt.getHours(), 11)
+  assert.equal(takenAt.getMinutes(), 30)
+  assert.equal(updated.history[0].injectionSite, 'right-upper')
 })
 
 test('builds scrollable medication history ranges into past and future months', () => {
