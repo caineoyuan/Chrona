@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, isLocalPreview } from '../auth.jsx'
-import { inventoryInteger, reminderOffsets, takenRecordStatus } from './lib'
+import { inventoryInteger, reminderOffsets, repairDynamicSchedule, takenRecordStatus } from './lib'
 
 const STORAGE_KEY = 'medira-medications-v1'
 const LEGACY_STORAGE_KEY = 'dosewell-medications-v1'
@@ -96,7 +96,7 @@ function normalizeMedication(medication) {
     ...medication.notifications,
   }
   const advanceMinutes = reminderOffsets(notifications)
-  return {
+  return repairDynamicSchedule({
     ...medication,
     history: (medication.history || []).map((record) => ({ ...record, status: takenRecordStatus(record) })),
     paused: medication.paused ?? false,
@@ -121,7 +121,7 @@ function normalizeMedication(medication) {
       ...medication.schedule,
     },
     trackInjectionSite: medication.trackInjectionSite ?? false,
-  }
+  })
 }
 
 function loadLocalMedications() {
@@ -161,6 +161,11 @@ export function useMedications() {
   const [loaded, setLoaded] = useState(false)
   const serverBacked = useRef(false)
   const saveTimer = useRef(null)
+  const latestMedications = useRef(medications)
+
+  useEffect(() => {
+    latestMedications.current = medications
+  }, [medications])
 
   useEffect(() => {
     if (isLocalPreview) {
@@ -201,6 +206,22 @@ export function useMedications() {
       if (saveTimer.current) clearTimeout(saveTimer.current)
     }
   }, [loaded, medications])
+
+  useEffect(() => {
+    const flushBeforeExit = () => {
+      if (!loaded || !serverBacked.current) return
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+      fetch('/api/medications', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ medications: latestMedications.current }),
+        keepalive: true,
+      }).catch((error) => console.error('Could not flush medications:', error))
+    }
+    window.addEventListener('pagehide', flushBeforeExit)
+    return () => window.removeEventListener('pagehide', flushBeforeExit)
+  }, [loaded])
 
   return [medications, setMedications, loaded]
 }

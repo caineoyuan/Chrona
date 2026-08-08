@@ -33,7 +33,6 @@ import {
   isOnTime,
   localScheduleAnchor,
   medicationCalendarMonths,
-  overrideScheduledTime,
   overrideTakenDate,
   parsePastedTime,
   reminderOffsets,
@@ -42,7 +41,7 @@ import {
   timePartInput,
   toTwelveHourTime,
   toTwentyFourHourTime,
-  undoScheduleAfterDose,
+  updateDoseTime,
   wakingHourSchedule,
 } from './lib'
 import { scanMedicationLabel } from './labelOcr'
@@ -289,8 +288,16 @@ function TimeInput({ value, onChange, onComplete, label, compact = false }) {
     onComplete?.(next)
   }
 
+  const completeEdit = (event) => {
+    if (event.currentTarget.contains(event.relatedTarget)) return
+    const current = partsRef.current
+    const next = toTwentyFourHourTime(current.hours, current.minutes, current.period)
+    if (next) onComplete?.(next)
+  }
+
   return (
-    <div className={`time-input ${compact ? 'compact' : ''}`} role="group" aria-label={label} onPaste={handlePaste}>
+    <div className={`time-input ${compact ? 'compact' : ''}`} role="group" aria-label={label}
+      onBlur={completeEdit} onPaste={handlePaste}>
       {[0, 1].map((index) => (
         <span key={index}>
           {index === 1 && <b aria-hidden="true">:</b>}
@@ -319,11 +326,20 @@ function DoseTimeEditor({ dose, onChange }) {
   const displayedAt = takenAt && !Number.isNaN(takenAt.getTime()) ? takenAt : dose.scheduledAt
   const initial = displayedAt.toTimeString().slice(0, 5)
   const [value, setValue] = useState(initial)
-  useEffect(() => setValue(initial), [initial])
+  const committed = useRef(initial)
+  useEffect(() => {
+    committed.current = initial
+    setValue(initial)
+  }, [initial])
+  const save = (time) => {
+    if (time === committed.current) return
+    committed.current = time
+    onChange(dose, time)
+  }
   return (
     <div className="dose-time-editor" onClick={(event) => event.stopPropagation()}>
       <TimeInput compact label={`${takenAt ? 'Taken' : 'Scheduled'} time for ${dose.medication.name}`} value={value}
-        onChange={setValue} onComplete={(time) => onChange(dose, time)} />
+        onChange={setValue} onComplete={save} />
     </div>
   )
 }
@@ -1311,26 +1327,9 @@ function App({ colorScheme = 'dark' }) {
   }
 
   const overrideDoseTime = (dose, time) => {
-    setMedications((items) => items.map((medication) => {
-      if (medication.id !== dose.medication.id) return medication
-      const restored = dose.record?.originalScheduledAt
-        ? undoScheduleAfterDose(medication, dose.record)
-        : { times: medication.times, schedule: medication.schedule }
-      const base = { ...medication, times: restored.times, schedule: restored.schedule }
-      const baseScheduledAt = new Date(dose.record?.originalScheduledAt || dose.scheduledAt)
-      const overridden = overrideScheduledTime(base, { ...dose, scheduledAt: baseScheduledAt }, time)
-      return {
-        ...base,
-        times: overridden.times,
-        schedule: overridden.schedule,
-        history: base.history.map((record) => record.id !== dose.record?.id ? record : {
-          ...record,
-          scheduledAt: overridden.scheduledAt.toISOString(),
-          originalScheduledAt: null,
-          status: record.status === 'skipped' ? 'skipped' : isOnTime(overridden.scheduledAt, new Date(record.takenAt)) ? 'on-time' : 'late',
-        }),
-      }
-    }))
+    setMedications((items) => items.map((medication) => (
+      medication.id === dose.medication.id ? updateDoseTime(medication, dose, time) : medication
+    )))
     setNotice(`${dose.medication.name} schedule updated`)
     setTimeout(() => setNotice(''), 2600)
   }

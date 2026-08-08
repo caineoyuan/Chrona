@@ -2,7 +2,6 @@ const MINUTE = 60 * 1000
 const DAY = 24 * 60 * MINUTE
 export const ON_TIME_WINDOW = 10 * MINUTE
 const MISSED_WINDOW = 30 * MINUTE
-const SCHEDULE_SHIFT_WINDOW = 30 * MINUTE
 
 export function inventoryInteger(value, fallback = 0) {
   const number = Number(value)
@@ -79,6 +78,12 @@ function atTime(date, time) {
   return result
 }
 
+function shiftTime(time, minutes) {
+  const [hours, currentMinutes] = time.split(':').map(Number)
+  const shifted = (hours * 60 + currentMinutes + minutes + 24 * 60) % (24 * 60)
+  return `${String(Math.floor(shifted / 60)).padStart(2, '0')}:${String(shifted % 60).padStart(2, '0')}`
+}
+
 function localDateKey(date) {
   return [
     date.getFullYear(),
@@ -129,6 +134,18 @@ function doseKey(medicationId, scheduledAt) {
 
 function recordFor(medication, scheduledAt) {
   return medication.history.find((entry) => entry.scheduledAt === scheduledAt.toISOString())
+}
+
+function nearestSlotIndex(medication, scheduledAt) {
+  const times = Array.isArray(medication.times) && medication.times.length
+    ? medication.times
+    : [scheduledAt.toTimeString().slice(0, 5)]
+  const targetMinutes = scheduledAt.getHours() * 60 + scheduledAt.getMinutes()
+  return times.reduce((nearest, time, index) => {
+    const [hours, minutes] = time.split(':').map(Number)
+    const distance = Math.abs(hours * 60 + minutes - targetMinutes)
+    return distance < nearest.distance ? { index, distance } : nearest
+  }, { index: 0, distance: Infinity }).index
 }
 
 function scheduleFor(medication) {
@@ -192,10 +209,33 @@ export function isActiveAt(medication, value) {
 }
 
 export function getDosesForDay(medications, day = new Date()) {
-  return medications.flatMap((medication) => scheduledTimesForDay(medication, day).map(({ scheduledAt, time, slotIndex }) => {
-    if (scheduledAt < new Date(medication.createdAt) || !isActiveAt(medication, scheduledAt)) return null
-    return { medication, time, slotIndex, scheduledAt, record: recordFor(medication, scheduledAt), key: doseKey(medication.id, scheduledAt) }
-  }).filter(Boolean)).sort((a, b) => a.scheduledAt - b.scheduledAt)
+  const dayKey = localDateKey(day)
+  return medications.flatMap((medication) => {
+    const scheduled = scheduledTimesForDay(medication, day).map(({ scheduledAt, time, slotIndex }) => {
+      if (scheduledAt < new Date(medication.createdAt) || !isActiveAt(medication, scheduledAt)) return null
+      return { medication, time, slotIndex, scheduledAt, record: recordFor(medication, scheduledAt), key: doseKey(medication.id, scheduledAt) }
+    }).filter(Boolean)
+    const scheduledRecordIds = new Set(scheduled.map((dose) => dose.record?.id).filter(Boolean))
+    const recorded = medication.history.flatMap((record) => {
+      if (scheduledRecordIds.has(record.id)) return []
+      const displayAt = new Date(record.takenAt || record.skippedAt || record.scheduledAt)
+      const scheduledAt = new Date(record.scheduledAt)
+      if (Number.isNaN(displayAt.getTime()) || Number.isNaN(scheduledAt.getTime()) || localDateKey(displayAt) !== dayKey) return []
+      return [{
+        medication,
+        time: displayAt.toTimeString().slice(0, 5),
+        slotIndex: nearestSlotIndex(medication, scheduledAt),
+        scheduledAt,
+        record,
+        key: `${medication.id}-record-${record.id || record.scheduledAt}`,
+      }]
+    })
+    return [...scheduled, ...recorded]
+  }).sort((a, b) => {
+    const first = new Date(a.record?.takenAt || a.record?.skippedAt || a.scheduledAt)
+    const second = new Date(b.record?.takenAt || b.record?.skippedAt || b.scheduledAt)
+    return first - second
+  })
 }
 
 export function getActionableDoses(medications, now = new Date()) {
@@ -339,29 +379,43 @@ export function overrideTakenDate(medication, recordId, dateKey, overrideTime = 
   const time = overrideTime || `${String(previousTakenAt.getHours()).padStart(2, '0')}:${String(previousTakenAt.getMinutes()).padStart(2, '0')}`
   const takenAt = localScheduleAnchor(dateKey, time)
   if (!takenAt) return medication
-  const wasLastTaken = getLastTaken(medication)?.id === recordId
-  const scheduledAt = new Date(record.scheduledAt)
-  const history = medication.history.map((entry) => entry.id !== recordId ? entry : {
+  const originalScheduledAt = new Date(record.originalScheduledAt || record.scheduledAt)
+  if (Number.isNaN(originalScheduledAt.getTime())) return medication
+  if (getLastTaken(medication)?.id !== recordId) {
+    return {
+      ...medication,
+      history: medication.history.map((entry) => entry.id !== recordId ? entry : {
+        ...entry,
+        takenAt: takenAt.toISOString(),
+        status: isOnTime(originalScheduledAt, takenAt) ? 'on-time' : 'late',
+        ...(injectionSite === undefined ? {} : { injectionSite: injectionSite || null }),
+      }),
+    }
+  }
+  const restored = undoScheduleAfterDose(medication, record)
+  const base = {
+    ...medication,
+    times: restored.times || medication.times || [time],
+    schedule: restored.schedule || medication.schedule,
+  }
+  const adjustment = adjustScheduleAfterDose(base, {
+    medication: base,
+    scheduledAt: originalScheduledAt,
+    slotIndex: nearestSlotIndex(base, originalScheduledAt),
+  }, takenAt)
+  const history = base.history.map((entry) => entry.id !== recordId ? entry : {
     ...entry,
+    scheduledAt: adjustment.scheduledAt.toISOString(),
     takenAt: takenAt.toISOString(),
-    status: Number.isNaN(scheduledAt.getTime()) ? entry.status : isOnTime(scheduledAt, takenAt) ? 'on-time' : 'late',
+    originalScheduledAt: adjustment.originalScheduledAt?.toISOString() || null,
+    status: isOnTime(originalScheduledAt, takenAt) ? 'on-time' : 'late',
     ...(injectionSite === undefined ? {} : { injectionSite: injectionSite || null }),
   })
-  const latestTakenAt = wasLastTaken
-    ? history.filter((entry) => entry.takenAt).map((entry) => new Date(entry.takenAt)).sort((a, b) => b - a)[0]
-    : null
-  const latestTime = latestTakenAt
-    ? `${String(latestTakenAt.getHours()).padStart(2, '0')}:${String(latestTakenAt.getMinutes()).padStart(2, '0')}`
-    : null
   return {
-    ...medication,
+    ...base,
     history,
-    times: latestTime && medication.schedule?.type === 'day-interval'
-      ? medication.times?.map((current, index) => index === 0 ? latestTime : current) || medication.times
-      : medication.times,
-    schedule: latestTakenAt && medication.schedule?.type === 'day-interval'
-      ? { ...medication.schedule, anchorAt: latestTakenAt.toISOString() }
-      : medication.schedule,
+    times: adjustment.times,
+    schedule: adjustment.schedule,
   }
 }
 
@@ -452,15 +506,19 @@ export function adjustScheduleAfterDose(medication, dose, takenAt) {
   const schedule = scheduleFor(medication)
   const shiftedAt = new Date(takenAt)
   shiftedAt.setSeconds(0, 0)
-  const reanchorDayInterval = schedule.type === 'day-interval' && shiftedAt.getTime() !== dose.scheduledAt.getTime()
-  const shifted = reanchorDayInterval
-    || (takenAt - dose.scheduledAt > SCHEDULE_SHIFT_WINDOW && (schedule.type === 'daily' || schedule.type === 'interval'))
+  const scheduledAt = new Date(dose.scheduledAt)
+  scheduledAt.setSeconds(0, 0)
+  const dynamicallyScheduled = schedule.type === 'daily' || schedule.type === 'interval' || schedule.type === 'day-interval'
+  const shifted = dynamicallyScheduled && shiftedAt.getTime() !== scheduledAt.getTime()
+  const shiftMinutes = Math.round((shiftedAt - scheduledAt) / MINUTE)
   return {
     shifted,
     scheduledAt: shifted ? shiftedAt : dose.scheduledAt,
     originalScheduledAt: shifted ? dose.scheduledAt : null,
-    times: shifted && (schedule.type === 'daily' || schedule.type === 'day-interval')
-      ? medication.times.map((time, index) => index === dose.slotIndex ? shiftedAt.toTimeString().slice(0, 5) : time)
+    times: shifted && schedule.type === 'daily'
+      ? medication.times.map((time) => shiftTime(time, shiftMinutes)).sort()
+      : shifted && schedule.type === 'day-interval'
+        ? medication.times.map((time, index) => index === dose.slotIndex ? shiftedAt.toTimeString().slice(0, 5) : time)
       : medication.times,
     schedule: shifted
       ? {
@@ -479,6 +537,35 @@ export function adjustScheduleAfterDose(medication, dose, takenAt) {
           }],
         }
       : medication.schedule,
+  }
+}
+
+export function repairDynamicSchedule(medication) {
+  const schedule = scheduleFor(medication)
+  if (schedule.type !== 'daily' && schedule.type !== 'interval') return medication
+  const latest = getLastTaken(medication)
+  if (!latest?.scheduledAt) return medication
+  const takenAt = new Date(latest.takenAt)
+  const scheduledAt = new Date(latest.scheduledAt)
+  if (Number.isNaN(takenAt.getTime()) || Number.isNaN(scheduledAt.getTime())) return medication
+  takenAt.setSeconds(0, 0)
+  scheduledAt.setSeconds(0, 0)
+  if (takenAt.getTime() === scheduledAt.getTime()) return medication
+
+  const adjustment = adjustScheduleAfterDose(medication, {
+    medication,
+    scheduledAt,
+    slotIndex: nearestSlotIndex(medication, scheduledAt),
+  }, takenAt)
+  return {
+    ...medication,
+    times: adjustment.times,
+    schedule: adjustment.schedule,
+    history: medication.history.map((record) => record !== latest ? record : {
+      ...record,
+      scheduledAt: adjustment.scheduledAt.toISOString(),
+      originalScheduledAt: record.originalScheduledAt || scheduledAt.toISOString(),
+    }),
   }
 }
 
@@ -525,23 +612,39 @@ export function removeTakenHistoryRecord(medication, recordId) {
 export function addTakenHistoryRecord(medication, recordId, dateKey, time, injectionSite = null, scheduledAtValue = null) {
   const takenAt = localScheduleAnchor(dateKey, time)
   if (!recordId || !takenAt) return medication
-  const scheduledAt = scheduledAtValue ? new Date(scheduledAtValue) : takenAt
-  if (Number.isNaN(scheduledAt.getTime())) return medication
-  const timestamp = takenAt.toISOString()
-  const scheduledTimestamp = scheduledAt.toISOString()
-  return {
+  const previousScheduledAt = scheduledAtValue ? new Date(scheduledAtValue) : takenAt
+  if (Number.isNaN(previousScheduledAt.getTime())) return medication
+  const base = {
     ...medication,
-    history: [...medication.history.filter((entry) => (entry.originalScheduledAt || entry.scheduledAt) !== scheduledTimestamp), {
+    times: Array.isArray(medication.times) && medication.times.length ? medication.times : [time],
+  }
+  const latestTakenAt = getLastTaken(base)?.takenAt
+  const shouldReanchor = !latestTakenAt || takenAt >= new Date(latestTakenAt)
+  const slotIndex = nearestSlotIndex(base, previousScheduledAt)
+  const overridden = shouldReanchor
+    ? overrideScheduledTime(base, { scheduledAt: takenAt, slotIndex }, time)
+    : { scheduledAt: previousScheduledAt, times: base.times, schedule: base.schedule }
+  const timestamp = takenAt.toISOString()
+  const scheduledTimestamp = overridden.scheduledAt.toISOString()
+  const previousScheduledTimestamp = previousScheduledAt.toISOString()
+  return {
+    ...base,
+    times: overridden.times,
+    schedule: overridden.schedule,
+    history: [...base.history.filter((entry) => {
+      const source = entry.originalScheduledAt || entry.scheduledAt
+      return source !== previousScheduledTimestamp && entry.scheduledAt !== scheduledTimestamp
+    }), {
       id: recordId,
       scheduledAt: scheduledTimestamp,
       takenAt: timestamp,
-      originalScheduledAt: null,
-      status: isOnTime(scheduledAt, takenAt) ? 'on-time' : 'late',
+      originalScheduledAt: previousScheduledTimestamp === scheduledTimestamp ? null : previousScheduledTimestamp,
+      status: 'on-time',
       injectionSite: injectionSite || null,
     }],
-    inventory: medication.inventory?.remaining == null ? medication.inventory : {
-      ...medication.inventory,
-      remaining: Math.max(0, inventoryInteger(medication.inventory.remaining) - 1),
+    inventory: base.inventory?.remaining == null ? base.inventory : {
+      ...base.inventory,
+      remaining: Math.max(0, inventoryInteger(base.inventory.remaining) - 1),
     },
   }
 }
@@ -560,7 +663,9 @@ export function overrideScheduledTime(medication, dose, time) {
     times,
     schedule: {
       ...schedule,
-      anchorAt: schedule.type === 'interval' ? scheduledAt.toISOString() : schedule.anchorAt,
+      anchorAt: schedule.type === 'interval' || schedule.type === 'day-interval'
+        ? scheduledAt.toISOString()
+        : schedule.anchorAt,
       changes: [...schedule.changes, {
         effectiveAt: scheduledAt.toISOString(),
         previous: {
@@ -573,6 +678,33 @@ export function overrideScheduledTime(medication, dose, time) {
         },
       }],
     },
+  }
+}
+
+export function updateDoseTime(medication, dose, time) {
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) return medication
+  if (dose.record?.takenAt) {
+    const takenAt = new Date(dose.record.takenAt)
+    if (Number.isNaN(takenAt.getTime())) return medication
+    return overrideTakenDate(medication, dose.record.id, localDateKey(takenAt), time)
+  }
+
+  const restored = dose.record?.originalScheduledAt
+    ? undoScheduleAfterDose(medication, dose.record)
+    : { times: medication.times, schedule: medication.schedule }
+  const base = { ...medication, times: restored.times, schedule: restored.schedule }
+  const baseScheduledAt = new Date(dose.record?.originalScheduledAt || dose.scheduledAt)
+  if (Number.isNaN(baseScheduledAt.getTime())) return medication
+  const overridden = overrideScheduledTime(base, { ...dose, scheduledAt: baseScheduledAt }, time)
+  return {
+    ...base,
+    times: overridden.times,
+    schedule: overridden.schedule,
+    history: base.history.map((record) => record.id !== dose.record?.id ? record : {
+      ...record,
+      scheduledAt: overridden.scheduledAt.toISOString(),
+      originalScheduledAt: null,
+    }),
   }
 }
 

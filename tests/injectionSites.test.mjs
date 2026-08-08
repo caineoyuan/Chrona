@@ -22,6 +22,7 @@ import {
   overrideTakenDate,
   parsePastedTime,
   reminderOffsets,
+  repairDynamicSchedule,
   removeTakenHistoryRecord,
   takenRecordStatus,
   timePartInput,
@@ -29,6 +30,7 @@ import {
   toTwelveHourTime,
   toTwentyFourHourTime,
   undoScheduleAfterDose,
+  updateDoseTime,
   updateTimeDigit,
   wakingHourSchedule,
 } from '../src/medira/lib.js'
@@ -272,12 +274,13 @@ function applyTaken(med, scheduledAt, takenAt, slotIndex = 0) {
   }
 }
 
-test('re-anchors a 12-hour schedule after a dose over 30 minutes late', () => {
+test('re-anchors a 12-hour schedule to the exact taken time', () => {
   const med = medication({ type: 'interval', intervalHours: 12, weekdays: [], anchorAt: '2026-08-06T11:00:00' })
-  const updated = applyTaken(med, new Date('2026-08-06T11:00:00'), new Date('2026-08-06T12:00:00'))
-  const next = getNextDose([updated], new Date('2026-08-06T12:01:00'))
-  assert.equal(next.scheduledAt.getHours(), 0)
-  assert.equal(next.scheduledAt.getDate(), 7)
+  const updated = applyTaken(med, new Date('2026-08-06T11:00:00'), new Date('2026-08-06T09:16:00'))
+  const next = getNextDose([updated], new Date('2026-08-06T09:17:00'))
+  assert.equal(next.scheduledAt.getHours(), 21)
+  assert.equal(next.scheduledAt.getMinutes(), 16)
+  assert.equal(next.scheduledAt.getDate(), 6)
 })
 
 test('moves a daily schedule to the late taken time', () => {
@@ -289,6 +292,88 @@ test('moves a daily schedule to the late taken time', () => {
   assert.equal(next.scheduledAt.getDate(), 7)
   const previousDay = getRecentDoses([updated], new Date('2026-08-05T18:00:00'), 1)
   assert.equal(previousDay[0].scheduledAt.getHours(), 11)
+})
+
+test('shifts every future daily time by the exact taken-time difference', () => {
+  const med = medication(
+    { type: 'daily', intervalHours: 12, weekdays: [], anchorAt: null, changes: [] },
+    ['11:00', '23:00'],
+  )
+  const updated = applyTaken(med, new Date('2026-08-06T11:00:00'), new Date('2026-08-06T09:16:00'))
+  const next = getNextDose([updated], new Date('2026-08-06T09:17:00'))
+
+  assert.deepEqual(updated.times, ['09:16', '21:16'])
+  assert.equal(next.scheduledAt.getHours(), 21)
+  assert.equal(next.scheduledAt.getMinutes(), 16)
+})
+
+test('repairs a stored hourly schedule from its latest actual taken time', () => {
+  const med = {
+    ...medication(
+      { type: 'interval', intervalHours: 12, weekdays: [], anchorAt: '2026-08-06T11:16:00', changes: [] },
+      ['11:16', '23:16'],
+    ),
+    history: [{
+      id: 'legacy-dose',
+      scheduledAt: '2026-08-06T11:16:00',
+      takenAt: '2026-08-06T10:31:00',
+      status: 'late',
+    }],
+  }
+  const repaired = repairDynamicSchedule(med)
+  const repairedAgain = repairDynamicSchedule(repaired)
+  const next = getNextDose([repaired], new Date('2026-08-06T10:32:00'))
+
+  assert.equal(next.scheduledAt.getHours(), 22)
+  assert.equal(next.scheduledAt.getMinutes(), 31)
+  assert.equal(repaired.history[0].originalScheduledAt, new Date('2026-08-06T11:16:00').toISOString())
+  assert.deepEqual(repairedAgain, repaired)
+})
+
+test('repairs stored daily times without shifting them again on reload', () => {
+  const med = {
+    ...medication(
+      { type: 'daily', intervalHours: 12, weekdays: [], anchorAt: null, changes: [] },
+      ['11:16', '23:16'],
+    ),
+    history: [{
+      id: 'legacy-dose',
+      scheduledAt: '2026-08-06T11:16:00',
+      takenAt: '2026-08-06T10:31:00',
+      status: 'late',
+    }],
+  }
+  const repaired = repairDynamicSchedule(med)
+
+  assert.deepEqual(repaired.times, ['10:31', '22:31'])
+  assert.deepEqual(repairDynamicSchedule(repaired), repaired)
+})
+
+test('edits the exact taken interval record instead of the upcoming dose', () => {
+  const med = {
+    ...medication(
+      { type: 'interval', intervalHours: 12, weekdays: [], anchorAt: '2026-08-08T10:15:00', changes: [] },
+      ['10:15', '22:15'],
+    ),
+    history: [{
+      id: 'taken-dose',
+      scheduledAt: new Date('2026-08-08T10:15:00').toISOString(),
+      takenAt: new Date('2026-08-08T10:31:00').toISOString(),
+      status: 'late',
+    }],
+  }
+  const takenDose = getDosesForDay([med], new Date('2026-08-08T12:00:00'))
+    .find((dose) => dose.record?.id === 'taken-dose')
+  const updated = updateDoseTime(med, takenDose, '10:45')
+  const doses = getDosesForDay([updated], new Date('2026-08-08T12:00:00'))
+  const editedTaken = doses.find((dose) => dose.record?.id === 'taken-dose')
+  const upcoming = doses.find((dose) => !dose.record)
+
+  assert.equal(new Date(editedTaken.record.takenAt).getHours(), 10)
+  assert.equal(new Date(editedTaken.record.takenAt).getMinutes(), 45)
+  assert.equal(editedTaken.scheduledAt.getMinutes(), 45)
+  assert.equal(upcoming.scheduledAt.getHours(), 22)
+  assert.equal(upcoming.scheduledAt.getMinutes(), 45)
 })
 
 test('keeps weekly and twice-weekly schedules at their set time', () => {
@@ -336,6 +421,72 @@ test('overrides daily, interval, and weekly times from a dose card', () => {
   const weeklyOverride = overrideScheduledTime(weekly, { scheduledAt, slotIndex: 0 }, '13:30')
   assert.deepEqual(weeklyOverride.times, ['13:30'])
   assert.deepEqual(weeklyOverride.schedule.weekdays, [4])
+})
+
+test('saves a taken-time edit into history and recalculates later daily doses', () => {
+  const scheduledAt = new Date('2026-08-06T09:00:00')
+  const takenAt = new Date('2026-08-06T09:05:00')
+  const med = {
+    ...medication({ type: 'daily', intervalHours: 24, weekdays: [], anchorAt: null, changes: [] }, ['09:00']),
+    history: [{
+      id: 'taken-dose',
+      scheduledAt: scheduledAt.toISOString(),
+      takenAt: takenAt.toISOString(),
+      status: 'on-time',
+    }],
+  }
+  const dose = { medication: med, scheduledAt, slotIndex: 0, record: med.history[0] }
+  const updated = updateDoseTime(med, dose, '10:15')
+  const next = getNextDose([updated], new Date('2026-08-06T10:16:00'))
+
+  assert.equal(new Date(updated.history[0].takenAt).getHours(), 10)
+  assert.equal(new Date(updated.history[0].takenAt).getMinutes(), 15)
+  assert.equal(updated.history[0].originalScheduledAt, scheduledAt.toISOString())
+  assert.deepEqual(updated.times, ['10:15'])
+  const calendarEvent = medicationCalendarMonths(updated, new Date('2026-08-06T12:00:00'))[0]
+    .days.find(({ day }) => day === 6).events[0]
+  assert.equal(new Date(calendarEvent.time).getHours(), 10)
+  assert.equal(new Date(calendarEvent.time).getMinutes(), 15)
+  assert.equal(next.scheduledAt.getDate(), 7)
+  assert.equal(next.scheduledAt.getHours(), 10)
+  assert.equal(next.scheduledAt.getMinutes(), 15)
+})
+
+test('adds a past dose from today to history, schedule, and future recurrence', () => {
+  const med = {
+    ...medication({ type: 'interval', intervalHours: 6, weekdays: [], anchorAt: '2026-08-07T09:00:00', changes: [] }, ['09:00', '15:00', '21:00']),
+    inventory: { remaining: 5, unit: 'doses' },
+  }
+  const updated = addTakenHistoryRecord(med, 'calendar-dose', '2026-08-07', '13:30')
+  const today = getActionableDoses([updated], new Date('2026-08-07T17:00:00'))
+  const recorded = today.find((dose) => dose.record?.id === 'calendar-dose')
+  const next = getNextDose([updated], new Date('2026-08-07T13:31:00'))
+
+  assert.ok(recorded)
+  assert.equal(recorded.record.status, 'on-time')
+  assert.equal(new Date(recorded.record.takenAt).getHours(), 13)
+  assert.equal(updated.inventory.remaining, 4)
+  assert.equal(next.scheduledAt.getHours(), 19)
+  assert.equal(next.scheduledAt.getMinutes(), 30)
+})
+
+test('re-anchors every-days schedules when a manual calendar dose is added', () => {
+  const med = medication({
+    type: 'day-interval',
+    intervalDays: 3,
+    intervalHours: 24,
+    weekdays: [],
+    anchorAt: '2026-08-06T09:00:00',
+    changes: [],
+  }, ['09:00'])
+  const updated = addTakenHistoryRecord(med, 'calendar-dose', '2026-08-07', '08:20')
+  const next = getNextDose([updated], new Date('2026-08-07T08:21:00'))
+
+  assert.equal(new Date(updated.schedule.anchorAt).getDate(), 7)
+  assert.equal(new Date(updated.schedule.anchorAt).getMinutes(), 20)
+  assert.equal(next.scheduledAt.getDate(), 10)
+  assert.equal(next.scheduledAt.getHours(), 8)
+  assert.equal(next.scheduledAt.getMinutes(), 20)
 })
 
 test('counts skipped doses as missed without changing last taken', () => {
@@ -415,6 +566,58 @@ test('overrides a taken dose date, time, and injection site together', () => {
   assert.equal(takenAt.getHours(), 11)
   assert.equal(takenAt.getMinutes(), 30)
   assert.equal(updated.history[0].injectionSite, 'right-upper')
+})
+
+test('editing an older dose leaves the live recurrence anchor unchanged', () => {
+  const med = {
+    ...medication({
+      type: 'day-interval',
+      intervalDays: 3,
+      intervalHours: 24,
+      weekdays: [],
+      anchorAt: '2026-08-07T08:00:00',
+      changes: [],
+    }, ['08:00']),
+    history: [{
+      id: 'older-dose',
+      scheduledAt: '2026-08-04T08:00:00',
+      takenAt: '2026-08-04T08:05:00',
+      status: 'on-time',
+    }, {
+      id: 'latest-dose',
+      scheduledAt: '2026-08-07T08:00:00',
+      takenAt: '2026-08-07T08:02:00',
+      status: 'on-time',
+    }],
+  }
+  const updated = overrideTakenDate(med, 'older-dose', '2026-08-04', '07:30')
+
+  assert.equal(updated.schedule.anchorAt, med.schedule.anchorAt)
+  assert.deepEqual(updated.schedule.changes, [])
+  assert.equal(updated.history[0].scheduledAt, med.history[0].scheduledAt)
+  assert.equal(new Date(updated.history[0].takenAt).getMinutes(), 30)
+})
+
+test('adding older history does not move the current recurrence anchor', () => {
+  const med = {
+    ...medication({
+      type: 'interval',
+      intervalHours: 12,
+      weekdays: [],
+      anchorAt: '2026-08-07T08:00:00',
+      changes: [],
+    }, ['08:00', '20:00']),
+    history: [{
+      id: 'latest-dose',
+      scheduledAt: '2026-08-07T08:00:00',
+      takenAt: '2026-08-07T08:02:00',
+      status: 'on-time',
+    }],
+  }
+  const updated = addTakenHistoryRecord(med, 'older-dose', '2026-08-05', '10:00')
+
+  assert.equal(updated.schedule.anchorAt, med.schedule.anchorAt)
+  assert.deepEqual(updated.schedule.changes, [])
 })
 
 test('adds and removes manually recorded doses while updating inventory and last taken', () => {
