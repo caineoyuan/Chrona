@@ -13,9 +13,9 @@ test('medication list cards use their full width and show concise schedule detai
     app.indexOf('</article>', app.indexOf('className="card med-card clickable"')),
   )
 
-  assert.doesNotMatch(card, /<span className="meta-pill">\{frequencyLabel\(med\)\}<\/span>/)
-  assert.match(card, /med\.trackInjectionSite && <div className="meta-row">/)
-  assert.match(card, /<span>Frequency<strong>\{scheduleLabels\(med\)\[0\]\}<\/strong><\/span>/)
+  assert.doesNotMatch(card, /meta-pill|paused-badge|className="meta-row"/)
+  assert.match(card, /className="paused-label"/)
+  assert.match(card, /<span>Frequency<strong>\{permissions\.canViewSchedule \? scheduleLabels\(med\)\[0\] : 'Not shared'\}<\/strong><\/span>/)
   assert.doesNotMatch(card, /How to take|Doses taken|Starts /)
   assert.match(
     css,
@@ -29,9 +29,10 @@ test('medication list cards use their full width and show concise schedule detai
   )
   assert.match(
     css,
-    /\.med-grid \.med-card :where\([\s\S]*\.meta-pill,[\s\S]*\.notes p,[\s\S]*\.med-footer strong,[\s\S]*\.paused-badge[\s\S]*\) \{\s*font-size: var\(--font-sm\);/,
+    /\.med-grid \.med-card :where\([\s\S]*\.permission-summary,[\s\S]*\.notes p,[\s\S]*\.med-footer strong,[\s\S]*\.paused-label[\s\S]*\) \{\s*font-size: var\(--font-sm\);/,
   )
   assert.doesNotMatch(css, /\.med-grid \.med-card :where\(\s*\.card-title,/)
   assert.match(css, /\.med-grid \.med-card \.card-title \{[^}]*font-size: var\(--font-lg\);/)
   assert.match(css, /\.med-grid \.med-card :where\(\.notes, \.inventory-row, \.med-footer\) \{\s*border-top: 0;\s*margin-top: 4px;\s*padding-top: 8px;/)
+  assert.doesNotMatch(css, /\.meta-pill|\.paused-badge/)
 })

@@ -1,10 +1,18 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, isLocalPreview } from '../auth.jsx'
+import { sharingEnabled } from '../feature-flags.js'
 import { inventoryInteger, reminderOffsets, repairDynamicSchedule, takenRecordStatus } from './lib'
+import {
+  medicationData,
+  medicationHistoryForResource,
+  medicationResourceClient,
+  privateMedicationSnapshot,
+} from './scoped-medications.js'
 
 const STORAGE_KEY = 'medira-medications-v1'
 const LEGACY_STORAGE_KEY = 'dosewell-medications-v1'
 const PREVIEW_SEED_KEY = 'medira-preview-seed-v1'
+const SHARED_SYNC_INTERVAL_MS = 300_000
 
 const PREVIEW_MEDICATIONS = [
   {
@@ -124,6 +132,25 @@ function normalizeMedication(medication) {
   })
 }
 
+function resourceMedication(resource, history = []) {
+  return normalizeMedication({
+    ...resource.data,
+    history,
+    resourceId: resource.id,
+    resourceVersion: resource.version,
+    resourceAccess: resource.access,
+  })
+}
+
+async function loadMedicationResource(client, resource) {
+  const history = await medicationHistoryForResource(client, resource)
+  return resourceMedication(resource, history)
+}
+
+function sameValue(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
 function loadLocalMedications() {
   try {
     const current = localStorage.getItem(STORAGE_KEY)
@@ -160,12 +187,89 @@ export function useMedications() {
   const [medications, setMedications] = useState(localMedications.current)
   const [loaded, setLoaded] = useState(false)
   const serverBacked = useRef(false)
-  const saveTimer = useRef(null)
   const latestMedications = useRef(medications)
+  const resourceStates = useRef(new Map())
+  const generations = useRef(new Map())
+  const mutationQueue = useRef(Promise.resolve())
+  const refreshInFlight = useRef(null)
+  const client = useRef(medicationResourceClient(api))
+  const [syncError, setSyncError] = useState(null)
 
   useEffect(() => {
     latestMedications.current = medications
   }, [medications])
+
+  const rememberResource = useCallback((medication) => {
+    resourceStates.current.set(medication.id, {
+      id: medication.resourceId,
+      version: medication.resourceVersion,
+      access: medication.resourceAccess,
+      eventIds: new Map(
+        (medication.history || [])
+          .filter((event) => event.resourceEventId)
+          .map((event) => [event.id, event.resourceEventId]),
+      ),
+    })
+  }, [])
+
+  const loadResource = useCallback(async (resource) => {
+    return loadMedicationResource(client.current, resource)
+  }, [])
+
+  const refetchResource = useCallback(async (clientId, resourceId) => {
+    try {
+      const resource = await client.current.get(resourceId)
+      const refreshed = await loadResource(resource)
+      rememberResource(refreshed)
+      latestMedications.current = latestMedications.current.map((item) =>
+        item.id === clientId ? refreshed : item)
+      setMedications(latestMedications.current)
+      return refreshed
+    } catch (error) {
+      if (error.status === 404) {
+        resourceStates.current.delete(clientId)
+        latestMedications.current = latestMedications.current.filter(
+          (item) => item.id !== clientId,
+        )
+        setMedications(latestMedications.current)
+        return null
+      }
+      throw error
+    }
+  }, [loadResource, rememberResource])
+
+  const createResource = useCallback(async (medication) => {
+    const resource = await client.current.create(medicationData(medication))
+    const state = {
+      id: resource.id,
+      version: resource.version,
+      access: resource.access,
+      eventIds: new Map(),
+    }
+    resourceStates.current.set(medication.id, state)
+    for (const event of medication.history || []) {
+      const result = await client.current.createDoseEvent(
+        state.id,
+        state.version,
+        event,
+      )
+      state.version = result.version
+      state.eventIds.set(event.id, result.doseEvent.resourceEventId)
+    }
+    return state
+  }, [])
+
+  const migratePrivateMedications = useCallback(async (source) => {
+    const migrated = []
+    for (const medication of source.map(normalizeMedication)) {
+      await createResource(medication)
+      const resource = await client.current.get(
+        resourceStates.current.get(medication.id).id,
+      )
+      migrated.push(await loadResource(resource))
+    }
+    return migrated
+  }, [createResource, loadResource])
 
   useEffect(() => {
     if (isLocalPreview) {
@@ -173,55 +277,228 @@ export function useMedications() {
       return
     }
     let active = true
-    api('/api/medications')
-      .then((data) => {
+    client.current.list()
+      .then(async (resources) => {
         if (!active) return
         serverBacked.current = true
-        const serverMedications = Array.isArray(data?.medications)
-          ? data.medications.map(normalizeMedication)
-          : []
-        setMedications(serverMedications.length ? serverMedications : localMedications.current)
+        let serverMedications = await Promise.all(resources.map(loadResource))
+        if (!serverMedications.length) {
+          const legacy = await api('/api/medications')
+          const legacyMedications = Array.isArray(legacy?.medications)
+            ? legacy.medications
+            : []
+          const privateFallback = legacyMedications.length
+            ? legacyMedications
+            : localMedications.current
+          if (privateFallback.length) {
+            serverMedications = await migratePrivateMedications(privateFallback)
+          }
+        }
+        if (!active) return
+        for (const medication of serverMedications) rememberResource(medication)
+        latestMedications.current = serverMedications
+        setMedications(serverMedications)
       })
-      .catch(() => {
+      .catch((error) => {
         serverBacked.current = false
+        setSyncError(error)
       })
       .finally(() => {
         if (active) setLoaded(true)
       })
     return () => { active = false }
-  }, [])
+  }, [loadResource, migratePrivateMedications, rememberResource])
 
   useEffect(() => {
     if (!loaded) return
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(medications))
-    if (!serverBacked.current) return
-    if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => {
-      api('/api/medications', {
-        method: 'PUT',
-        body: JSON.stringify({ medications }),
-      }).catch((error) => console.error('Could not save medications:', error))
-    }, 400)
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current)
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify(privateMedicationSnapshot(medications)),
+      )
+    } catch (error) {
+      console.error('Could not save private medication cache:', error)
     }
   }, [loaded, medications])
 
-  useEffect(() => {
-    const flushBeforeExit = () => {
-      if (!loaded || !serverBacked.current) return
-      if (saveTimer.current) clearTimeout(saveTimer.current)
-      fetch('/api/medications', {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ medications: latestMedications.current }),
-        keepalive: true,
-      }).catch((error) => console.error('Could not flush medications:', error))
-    }
-    window.addEventListener('pagehide', flushBeforeExit)
-    return () => window.removeEventListener('pagehide', flushBeforeExit)
-  }, [loaded])
+  const syncChange = useCallback(async (previous, next, generation) => {
+    if ((generations.current.get(next?.id || previous.id) || 0) !== generation) return
+    const clientId = next?.id || previous.id
+    let state = resourceStates.current.get(clientId)
+    try {
+      if (!previous) {
+        await createResource(next)
+        return
+      }
+      if (!next) {
+        if (!state) return
+        await client.current.remove(state.id, state.version)
+        resourceStates.current.delete(clientId)
+        return
+      }
+      if (!state) state = await createResource(previous)
 
-  return [medications, setMedications, loaded]
+      if (!sameValue(medicationData(previous), medicationData(next))) {
+        const updated = await client.current.update(
+          state.id,
+          state.version,
+          medicationData(next),
+        )
+        state.version = updated.version
+        state.access = updated.access
+      }
+
+      const oldEvents = new Map((previous.history || []).map((event) => [event.id, event]))
+      const nextEvents = new Map((next.history || []).map((event) => [event.id, event]))
+      for (const [eventId, event] of oldEvents) {
+        if (nextEvents.has(eventId)) continue
+        const resourceEventId = event.resourceEventId || state.eventIds.get(eventId)
+        if (!resourceEventId) continue
+        const result = await client.current.removeDoseEvent(
+          state.id,
+          resourceEventId,
+          state.version,
+        )
+        state.version = result.version
+        state.eventIds.delete(eventId)
+      }
+      for (const [eventId, event] of nextEvents) {
+        const oldEvent = oldEvents.get(eventId)
+        if (oldEvent && sameValue(oldEvent, event)) continue
+        const resourceEventId = event.resourceEventId || state.eventIds.get(eventId)
+        const result = resourceEventId
+          ? await client.current.updateDoseEvent(
+              state.id,
+              resourceEventId,
+              state.version,
+              event,
+            )
+          : await client.current.createDoseEvent(state.id, state.version, event)
+        state.version = result.version
+        state.eventIds.set(eventId, result.doseEvent.resourceEventId)
+      }
+      setSyncError(null)
+    } catch (error) {
+      setSyncError(error)
+      generations.current.set(clientId, generation + 1)
+      if (state?.id) {
+        try {
+          await refetchResource(clientId, state.id)
+        } catch {
+          latestMedications.current = previous
+            ? latestMedications.current.map((item) =>
+                item.id === clientId ? previous : item)
+            : latestMedications.current.filter((item) => item.id !== clientId)
+          setMedications(latestMedications.current)
+        }
+      } else {
+        latestMedications.current = previous
+          ? latestMedications.current.map((item) =>
+              item.id === clientId ? previous : item)
+          : latestMedications.current.filter((item) => item.id !== clientId)
+        setMedications(latestMedications.current)
+      }
+      throw error
+    }
+  }, [createResource, refetchResource])
+
+  const updateMedications = useCallback((update) => {
+    const previousItems = latestMedications.current
+    const nextItems = typeof update === 'function' ? update(previousItems) : update
+    if (!Array.isArray(nextItems) || nextItems === previousItems) return
+    latestMedications.current = nextItems
+    setMedications(nextItems)
+    if (!serverBacked.current) return
+
+    const previousById = new Map(previousItems.map((item) => [item.id, item]))
+    const nextById = new Map(nextItems.map((item) => [item.id, item]))
+    const changedIds = new Set([...previousById.keys(), ...nextById.keys()])
+    for (const id of changedIds) {
+      const previous = previousById.get(id)
+      const next = nextById.get(id)
+      if (previous === next || (previous && next && sameValue(previous, next))) continue
+      const generation = generations.current.get(id) || 0
+      mutationQueue.current = mutationQueue.current
+        .catch(() => {})
+        .then(() => syncChange(previous, next, generation))
+        .catch((error) => {
+          if (error.status !== 409) {
+            console.error('Could not sync medication resource:', error)
+          }
+        })
+    }
+  }, [syncChange])
+
+  const refetch = useCallback(async () => {
+    if (refreshInFlight.current) return refreshInFlight.current
+    const refresh = mutationQueue.current
+      .catch(() => {})
+      .then(async () => {
+        const resources = await client.current.list()
+        const refreshed = await Promise.all(resources.map(loadResource))
+        resourceStates.current.clear()
+        for (const medication of refreshed) rememberResource(medication)
+        latestMedications.current = refreshed
+        setMedications(refreshed)
+        setSyncError(null)
+        return refreshed
+      })
+      .finally(() => {
+        if (refreshInFlight.current === refresh) refreshInFlight.current = null
+      })
+    refreshInFlight.current = refresh
+    return refresh
+  }, [loadResource, rememberResource])
+
+  const refetchChangedResource = useCallback(async (resourceId) => {
+    await mutationQueue.current.catch(() => {})
+    const match = [...resourceStates.current.entries()].find(
+      ([, state]) => String(state.id) === String(resourceId),
+    )
+    if (!match) return refetch()
+    return refetchResource(match[0], match[1].id)
+  }, [refetch, refetchResource])
+
+  useEffect(() => {
+    if (!loaded || isLocalPreview || !serverBacked.current) return
+    const refreshVisibleMedications = () => {
+      if (document.visibilityState === 'hidden') return
+      refetch().catch(setSyncError)
+    }
+    const timer = window.setInterval(
+      refreshVisibleMedications,
+      SHARED_SYNC_INTERVAL_MS,
+    )
+    const events = sharingEnabled && 'EventSource' in window
+      ? new EventSource('/api/medications/events')
+      : null
+    if (events) {
+      events.onmessage = (message) => {
+        try {
+          const event = JSON.parse(message.data)
+          const refresh = event.resourceId
+            ? refetchChangedResource(event.resourceId)
+            : refetch()
+          refresh.catch(setSyncError)
+        } catch (error) {
+          console.error('Could not process medication sync event:', error)
+        }
+      }
+    }
+    window.addEventListener('focus', refreshVisibleMedications)
+    document.addEventListener('visibilitychange', refreshVisibleMedications)
+    return () => {
+      window.clearInterval(timer)
+      events?.close()
+      window.removeEventListener('focus', refreshVisibleMedications)
+      document.removeEventListener('visibilitychange', refreshVisibleMedications)
+    }
+  }, [loaded, refetch, refetchChangedResource])
+
+  return [
+    medications,
+    updateMedications,
+    loaded,
+    { error: syncError, refetch },
+  ]
 }

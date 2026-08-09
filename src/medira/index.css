@@ -35,8 +35,8 @@
 .medira-shell.light {
   --bg: #f7f7f4;
   --bg-2: #e5e5e1;
-  --card: #e8e8e4;
-  --card-2: #dfdfda;
+  --card: #eeeeea;
+  --card-2: #e7e7e2;
   --line: #c9c9c3;
   --text: #343331;
   --muted: #5f5e5a;
@@ -67,6 +67,9 @@
 }
 .medira-shell.light .topbar,
 .medira-shell.light .bottom-nav {
+  background: #e5e5e1;
+}
+.medira-shell.light .medira-navigation.with-profiles {
   background: #e5e5e1;
 }
 .medira-shell.light .bottom-nav button.active {
@@ -129,15 +132,6 @@
   background: var(--action-teal);
   border-color: var(--action-teal);
 }
-.medira-shell.light .paused-badge {
-  color: var(--muted);
-  background: #e6e2dc;
-  border-color: var(--line);
-}
-.medira-shell.light .meta-pill.injection {
-  color: #8e82fe;
-  border-color: #8e82fe;
-}
 .medira-shell.light .med-symbol {
   background: var(--action-teal);
 }
@@ -146,6 +140,16 @@
 }
 .medira-shell.light .action-glyph {
   color: #777773;
+}
+.medira-shell.light .action-glyph [data-part='person'] {
+  opacity: 1;
+  fill: #777773;
+}
+.medira-shell.light .action-glyph [data-part='plus-circle'] {
+  fill: color-mix(in srgb, #777773 40%, var(--button-neutral));
+}
+.medira-shell.light .action-glyph [data-part='plus'] {
+  fill: #777773;
 }
 .medira-shell.light .calendar-day.taken > button {
   color: white;
@@ -238,6 +242,15 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 
 .section-head, .page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 17px; }
 .page-actions { display: flex; align-items: center; gap: 8px; }
+.medication-list-head { display: block; }
+.medication-list-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.medication-list-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
+.shared-with { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: var(--font-sm); }
+.shared-avatar-list { display: flex; }
+.shared-avatar { position: relative; display: grid; width: 36px; height: 36px; place-items: center; padding: 0; background: transparent; border: 0; border-radius: 50%; }
+.shared-avatar + .shared-avatar { margin-left: -6px; }
+.shared-avatar .profile-avatar { width: 36px; height: 36px; border: 2px solid var(--bg); }
+.shared-avatar-tooltip { position: absolute; z-index: 4; top: calc(100% + 8px); left: 50%; width: max-content; max-width: 180px; padding: 8px; color: var(--text); background: var(--bg-2); border: 1px solid var(--line); border-radius: 2px; box-shadow: 0 4px 16px rgba(0,0,0,.3); font-size: var(--font-xs); transform: translateX(-50%); }
 .section-title { margin: 0; font-size: var(--font-md); }
 .tomorrow-section { margin-top: 32px; }
 .tomorrow-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
@@ -277,11 +290,12 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .dose-info span { color: var(--muted); font-size: var(--font-xs); margin-top: 3px; }
 .dose-info em { color: var(--purple); font-style: normal; }
 .dose-info span.skipped-at { color: var(--accent-ink); font-size: var(--font-xs); font-weight: 600; }
-.taken-toggle { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; color: var(--accent-2); background: transparent; border: 2px solid var(--accent-2); border-radius: 50%; transition: transform .12s ease, filter .12s ease; }
-.taken-toggle.complete { color: white; background: var(--accent-2); }
-.taken-toggle:hover { transform: scale(1.06); filter: brightness(1.08); }
+.taken-toggle { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; color: var(--muted); background: transparent; border: 2px solid var(--button-neutral-border); border-radius: 50%; transition: transform .12s ease, filter .12s ease; }
+.taken-toggle.complete { color: white; background: var(--accent-2); border: 0; outline: none; box-shadow: none; }
+.taken-toggle:hover:not(:disabled) { transform: scale(1.06); filter: brightness(1.08); }
 .taken-toggle:active { transform: scale(.96); }
-.taken-toggle.overdue { background: transparent; color: var(--accent-2); }
+.taken-toggle:disabled { cursor: default; }
+.taken-toggle.overdue { color: var(--muted); background: transparent; border-color: var(--button-neutral-border); }
 .taken-toggle.skipped { color: var(--accent-ink); background: transparent; border-color: var(--accent); }
 .empty { text-align: center; }
 .empty .card { padding: 40px 24px; }
@@ -297,7 +311,7 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .med-grid .med-card { display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; align-items: start; padding-block: 16px 24px; }
 .med-grid .med-card-head { grid-column: 1; grid-row: 1; align-self: start; }
 .med-grid .med-card-head .medication-actions { position: absolute; top: 14px; right: 14px; }
-.med-grid .med-name-row, .med-grid .dose-label, .med-grid .meta-row { grid-column: 2; }
+.med-grid .med-name-row, .med-grid .dose-label, .med-grid .meta-row, .med-grid .permission-summary,
 .med-grid .notes, .med-grid .inventory-row, .med-grid .med-footer { grid-column: 2; width: 100%; }
 .med-grid .med-name-row { grid-row: 1; align-self: center; min-height: 36px; margin-top: 0; }
 .med-grid .med-card .card-title { margin-top: 0; }
@@ -307,7 +321,7 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .med-card-head { display: flex; justify-content: space-between; }
 .med-symbol { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; background: rgba(1,238,184,.12); color: var(--accent-ink); }
 .medication-actions { display: flex; gap: 6px; }
-.icon-btn { background: var(--button-neutral); border: 1px solid var(--button-neutral-border); color: var(--button-neutral-text); width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
+.icon-btn { --icon-button-background: var(--button-neutral); background: var(--button-neutral); border: 1px solid var(--button-neutral-border); color: var(--button-neutral-text); width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
 .icon-btn.small { width: 31px; height: 31px; }
 .icon-btn.add-medication-btn { color: var(--button-neutral-text); background: var(--button-neutral); border-color: var(--button-neutral-border); }
 .icon-btn.search-icon-btn { width: 40px; height: 40px; border-radius: 3px; }
@@ -316,11 +330,17 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .icon-btn.danger:hover { color: #ff7a7a; border-color: #713535; }
 .med-card .card-title { font-size: var(--font-md); margin: 18px 0 1px; }
 .med-name-row { display: flex; align-items: center; gap: 8px; }
-.paused-badge { color: #bbb; background: #383838; border: 1px solid #555; border-radius: 999px; font-size: var(--font-xs); padding: 0 8px; }
+.paused-label { color: var(--muted); font-size: var(--font-sm); font-weight: 600; }
 .dose-label { color: var(--muted); font-size: var(--font-sm); margin: 0; }
 .meta-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0; }
-.meta-pill { display: inline-flex; align-items: center; gap: 5px; background: var(--bg-2); border: 1px solid var(--line); color: var(--muted); font-size: var(--font-xs); padding: 0 8px; border-radius: 999px; }
-.meta-pill.injection { color: #b6aaff; border-color: #514889; }
+.permission-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 0; color: var(--muted); font-size: var(--font-sm); }
+.permission-summary.compact { margin-top: 8px; }
+.permission-summary .permission-owner { color: var(--accent-ink); }
+.permission-summary .permission-editor { color: #b6aaff; }
+.permission-summary .permission-viewer { color: var(--muted); }
+.permission-summary span + span::before { content: '·'; margin-right: 8px; color: var(--muted); }
+.read-only-label { color: var(--muted); font-size: var(--font-xs); white-space: nowrap; }
+.dose-time-readonly { display: inline-flex; min-height: 40px; align-items: center; color: var(--text); font-size: var(--font-sm); font-weight: 600; font-variant-numeric: tabular-nums; }
 .notes { border-top: 1px solid var(--line); padding-top: 16px; min-height: 72px; }
 .notes span { color: var(--accent-ink); font-size: var(--font-xs); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
 .notes p { color: #c8c8c8; font-size: var(--font-sm); line-height: 1.5; margin: 4px 0; }
@@ -341,7 +361,6 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 }
 .med-grid .med-card :where(
   .dose-label,
-  .meta-pill,
   .permission-summary,
   .notes p,
   .inventory-row,
@@ -349,7 +368,7 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
   .inventory-row strong,
   .med-footer span,
   .med-footer strong,
-  .paused-badge
+  .paused-label
 ) {
   font-size: var(--font-sm);
 }
@@ -357,9 +376,25 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
   font-size: var(--font-lg);
 }
 
-.bottom-nav { position: fixed !important; z-index: 15; right: auto; bottom: 0; left: 50%; transform: translate3d(-50%,0,0); display: grid; grid-template-columns: repeat(2, 1fr); width: min(430px, calc(100% - 24px)); padding: 8px 8px max(8px, env(safe-area-inset-bottom)); background: rgba(30,30,30,.96); backdrop-filter: blur(10px); border: 1px solid var(--line); border-bottom: 0; border-radius: 17px 17px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,.3); backface-visibility: hidden; will-change: transform; }
+.medira-navigation { position: fixed; z-index: 15; right: auto; bottom: 0; left: 50%; transform: translate3d(-50%,0,0); width: min(430px, calc(100% - 24px)); backface-visibility: hidden; will-change: transform; }
+.medira-navigation.with-profiles { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: stretch; gap: 0; width: min(486px, calc(100% - 16px)); background: rgba(30,30,30,.96); backdrop-filter: blur(10px); border: 1px solid var(--line); border-bottom: 0; border-radius: 17px 17px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,.3); }
+.bottom-nav { display: grid; grid-template-columns: repeat(2, 1fr); width: 100%; padding: 8px 8px max(8px, env(safe-area-inset-bottom)); background: rgba(30,30,30,.96); backdrop-filter: blur(10px); border: 1px solid var(--line); border-bottom: 0; border-radius: 17px 17px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,.3); }
+.medira-navigation.with-profiles .bottom-nav { background: transparent; backdrop-filter: none; border: 0; border-radius: 0; box-shadow: none; }
 .bottom-nav button { display: flex; flex-direction: column; align-items: center; gap: 2px; background: none; border: 0; color: var(--muted); padding: 8px; font-size: var(--font-xs); border-radius: 11px; }
 .bottom-nav button.active { color: var(--accent-ink); background: rgba(1,238,184,.11); }
+.bottom-nav button:disabled { color: var(--muted); border-color: var(--line); opacity: .55; cursor: not-allowed; }
+.medication-profile-switcher { position: relative; display: grid; place-items: center; padding: 8px 0 max(8px, env(safe-area-inset-bottom)); }
+.medication-profile-trigger { position: relative; display: grid; width: 48px; height: 48px; place-items: center; padding: 0; background: transparent; border: 0; border-radius: 50%; box-shadow: none; }
+.medication-profile-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.medication-profile-trigger .profile-avatar { width: 40px; height: 40px; border: 0; box-shadow: 0 2px 4px rgba(0,0,0,.38); }
+.profile-swap-icon { position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; }
+.medication-profile-menu { position: absolute; bottom: calc(100% + 8px); left: 0; display: grid; width: min(280px, calc(100vw - 32px)); padding: 8px; background: linear-gradient(160deg, var(--card), var(--card-2)); border: 1px solid var(--line); border-radius: 2px; box-shadow: 0 -8px 30px rgba(0,0,0,.35); }
+.medication-profile-menu button { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 56px; padding: 8px; color: var(--text); text-align: left; background: transparent; border: 0; border-radius: 2px; }
+.medication-profile-menu button.active { background: rgba(1,238,184,.11); }
+.medication-profile-menu .profile-avatar { width: 40px; height: 40px; }
+.medication-profile-menu span { display: flex; min-width: 0; flex-direction: column; }
+.medication-profile-menu strong { overflow: hidden; font-size: var(--font-sm); text-overflow: ellipsis; white-space: nowrap; }
+.medication-profile-menu small { margin-top: 2px; color: var(--muted); font-size: var(--font-xs); }
 .icon-credit { display: block; width: fit-content; margin: -34px auto 38px; color: #686868; font-size: var(--font-xs); text-decoration: none; }
 .icon-credit:hover { color: var(--muted); }
 
@@ -495,7 +530,7 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px !important; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .site-modal { width: min(430px, 100%); }
 .details-modal { position: relative; width: min(470px, 100%); }
-.details-modal .modal-head { padding-right: 88px; }
+.details-modal .modal-head { padding-right: 136px; }
 .details-modal > .details-actions {
   position: absolute;
   top: 24px;
@@ -561,6 +596,41 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .history-add-dose { width: 40px; height: 40px; color: #073d31; background: var(--accent); border-color: var(--accent); }
 .medira-shell.light .history-add-dose,
 .medira-shell.light .history-save { color: var(--action-icon); background: var(--action-teal); border-color: var(--action-teal); }
+.history-private { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--line); }
+.history-private p { margin: 8px 0 0; color: var(--muted); font-size: var(--font-sm); }
+.sync-conflict { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; padding: 16px; color: var(--text); background: var(--bg-2); border: 1px solid var(--gold); font-size: var(--font-sm); }
+.sync-conflict .secondary-action { flex: none; }
+.sharing-backdrop { z-index: 80; }
+.sharing-modal { width: min(520px, 100%); max-height: calc(100dvh - 32px); overflow-x: clip; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+.sharing-modal .modal-head { margin-bottom: 8px; }
+.sharing-feedback { margin: 16px 0 0; padding: 8px 16px; font-size: var(--font-sm); border: 1px solid var(--line); }
+.sharing-feedback.error { color: #ff9a9a; border-color: #713535; }
+.sharing-permissions { margin-top: 24px !important; padding: 16px !important; background: var(--bg-2); border: 1px solid var(--line) !important; }
+.sharing-permissions legend { margin: 0; padding: 0 8px; }
+.sharing-role-picker { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.sharing-role-picker button { min-height: 40px; padding: 8px 16px; color: var(--muted); background: var(--card); border: 1px solid var(--line); border-radius: 12px; font-size: var(--font-sm); font-weight: 600; }
+.sharing-role-picker button.active { color: #073d31; background: var(--action-teal); border-color: var(--action-teal); }
+.sharing-history-options { display: grid; gap: 8px; margin-top: 16px; }
+.sharing-history-options label { display: flex !important; min-height: 40px; align-items: center; gap: 8px; margin: 0 !important; font-size: var(--font-sm); }
+.sharing-history-options input { width: 18px; height: 18px; margin: 0; accent-color: var(--action-teal); }
+.username-invite { margin-top: 24px; }
+.username-invite label { margin: 0; }
+.username-invite label > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 8px; }
+.username-invite input, .generated-link input { min-width: 0; margin: 0 !important; }
+.link-invite { display: grid; gap: 8px; margin-top: 16px; }
+.generated-link { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.share-management { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--line); }
+.share-management h3 { margin: 0 0 8px; font-family: var(--serif); font-size: var(--font-md); font-style: italic; font-weight: 400; }
+.share-management h3:not(:first-child) { margin-top: 24px; }
+.sharing-empty { margin: 0; color: var(--muted); font-size: var(--font-sm); }
+.share-row { display: flex; min-height: 56px; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.share-row .profile-avatar { width: 40px; height: 40px; flex: none; }
+.share-row > span { display: flex; min-width: 0; flex-direction: column; }
+.share-row strong { color: var(--text); font-size: var(--font-sm); overflow-wrap: anywhere; }
+.share-row small { margin-top: 2px; color: var(--muted); font-size: var(--font-xs); }
+.share-row .icon-btn { flex: none; }
+.medira-shell.light .sharing-role-picker button.active { color: var(--action-icon); }
+.medira-shell.light .sharing-feedback.error { color: #a82832; border-color: #a82832; }
 .site-instruction { color: var(--muted); font-size: var(--font-sm); margin: -8px 0 10px; }
 .site-legend { display: flex; justify-content: center; gap: 14px; margin-bottom: 14px; }
 .site-legend span { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: var(--font-xs); }
@@ -594,6 +664,7 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
   .med-grid .med-card { display: block; }
   .med-grid .med-card-head { display: flex; }
   .med-grid .med-card .card-title { margin-top: 24px; }
+  .med-grid .permission-summary { margin-top: 8px; }
   .med-grid .notes { padding-right: 0; border-top: 0; padding-top: 16px; }
   .med-grid .med-card-head .medication-actions { position: static; }
   .page-head { align-items: center; }
@@ -610,13 +681,20 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
   .dose-action-column { grid-area: action; justify-self: end; }
   .dose-list { --dose-list-gutter: 12px; }
   .page-actions .primary-btn { font-size: 0; width: 38px; height: 38px; padding: 0; border-radius: 50%; }
-  .modal-backdrop { padding: 0; align-items: end; }
-  .modal-backdrop.form-backdrop { align-items: center; padding: 16px; }
-  .modal-backdrop.details-backdrop { align-items: center; padding: 16px; }
+  .modal-backdrop { align-items: center; padding: 16px; }
   .details-modal, .medication-form { max-height: calc(100vh - 32px); }
+  .sharing-modal { width: 100%; max-height: calc(100dvh - 32px); }
   .medication-form { width: 100%; border-inline: 0; }
   .medication-form .modal-head, .modal-footer { padding-inline: 16px; }
   .modal-scroll { padding-inline: 16px; }
   .detail-fields { grid-template-columns: 1fr; }
   .detail-fields label { margin-bottom: 13px; }
+  .sync-conflict { align-items: flex-start; flex-direction: column; }
+}
+
+@media (max-width: 360px) {
+  .details-modal .modal-head { padding-right: 88px; }
+  .details-actions { flex-wrap: wrap; justify-content: flex-end; max-width: 80px; }
+  .username-invite label > div { grid-template-columns: 1fr; }
+  .username-invite .secondary-action { width: 100%; }
 }

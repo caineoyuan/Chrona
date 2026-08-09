@@ -14,6 +14,7 @@ import { PlayRegular } from '@fluentui/react-icons/svg/play'
 import { SearchRegular } from '@fluentui/react-icons/svg/search'
 import { SaveRegular } from '@fluentui/react-icons/svg/save'
 import ChronaIcon from '../components/Icon'
+import Avatar from '../components/Avatar'
 import {
   addTakenHistoryRecord,
   adjustScheduleAfterDose,
@@ -49,6 +50,9 @@ import { searchOpenFda } from './openFda'
 import { playComplete, unlockSounds } from './sound'
 import { useMedications } from './storage'
 import { syncPushReminders } from './push'
+import { medicationPermissions } from './scoped-medications'
+import { useMedicationSharing } from './medication-sharing'
+import { sharingEnabled } from '../feature-flags.js'
 
 const emptyForm = {
   name: '', dose: '', notes: '', times: ['08:00'],
@@ -82,6 +86,7 @@ const mediraLightTheme = {
 
 const VIEW_STORAGE_KEY = 'medira-last-view'
 const LEGACY_VIEW_STORAGE_KEY = 'dosewell-last-view'
+const NAVIGATION_STORAGE_KEY = 'medira-navigation-state'
 const REMINDER_PRESETS = [
   { value: 0, label: 'At time' },
   { value: 5, label: '5 min' },
@@ -103,6 +108,30 @@ function loadMediraView() {
     return savedView === 'medications' ? 'medications' : 'today'
   } catch {
     return 'today'
+  }
+}
+
+function loadMediraNavigation() {
+  const fallback = {
+    view: loadMediraView(),
+    selectedProfileId: '',
+    viewingMedicationId: '',
+  }
+  try {
+    const saved = JSON.parse(localStorage.getItem(NAVIGATION_STORAGE_KEY))
+    return {
+      view: ['today', 'medications'].includes(saved?.view)
+        ? saved.view
+        : fallback.view,
+      selectedProfileId: typeof saved?.selectedProfileId === 'string'
+        ? saved.selectedProfileId
+        : '',
+      viewingMedicationId: typeof saved?.viewingMedicationId === 'string'
+        ? saved.viewingMedicationId
+        : '',
+    }
+  } catch {
+    return fallback
   }
 }
 
@@ -157,16 +186,19 @@ function medicationListClipboardContent(medications) {
   const entries = medications.map((medication) => {
     const dose = medication.dose || 'Dose not specified'
     const schedule = scheduleLabels(medication).join(' · ')
-    const count = medicationTakenCount(medication)
+    const canViewHistory = medicationPermissions(medication).canViewHistory
+    const count = canViewHistory ? medicationTakenCount(medication) : null
     const since = new Date(medication.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
     return { medication, dose, schedule, count, since }
   })
   return {
     text: ['Medication list', ...entries.map(({ medication, dose, schedule, count, since }) => (
-      `• ${medication.name}\n  ◦ Dose: ${dose}\n  ◦ Schedule: ${schedule}\n  ◦ ${count} ${count === 1 ? 'dose' : 'doses'} taken since ${since}`
+      `• ${medication.name}\n  ◦ Dose: ${dose}\n  ◦ Schedule: ${schedule}${
+        count == null ? '' : `\n  ◦ ${count} ${count === 1 ? 'dose' : 'doses'} taken since ${since}`
+      }`
     ))].join('\n'),
     html: `<h2>Medication list</h2><ul>${entries.map(({ medication, dose, schedule, count, since }) => (
-      `<li><strong>${escapeHtml(medication.name)}</strong><ul><li>Dose: ${escapeHtml(dose)}</li><li>Schedule: ${escapeHtml(schedule)}</li><li>${count} ${count === 1 ? 'dose' : 'doses'} taken since ${escapeHtml(since)}</li></ul></li>`
+      `<li><strong>${escapeHtml(medication.name)}</strong><ul><li>Dose: ${escapeHtml(dose)}</li><li>Schedule: ${escapeHtml(schedule)}</li>${count == null ? '' : `<li>${count} ${count === 1 ? 'dose' : 'doses'} taken since ${escapeHtml(since)}</li>`}</ul></li>`
     )).join('')}</ul>`,
   }
 }
@@ -175,7 +207,7 @@ function Icon({ name, size = 20 }) {
   if (name === 'pill' || name === 'syringe') {
     return <img className="medication-icon" src={name === 'syringe' ? '/syringe-icon.svg' : '/medication-icon.png'} width={size} height={size} alt="" aria-hidden="true" />
   }
-  if (name === 'edit' || name === 'copy' || name === 'trash') {
+  if (name === 'edit' || name === 'copy' || name === 'trash' || name === 'link' || name === 'user-add') {
     return <ChronaIcon name={name} size={size} className="icon action-glyph" />
   }
   if (name === 'pause') {
@@ -321,7 +353,7 @@ function TimeInput({ value, onChange, onComplete, label, compact = false }) {
   )
 }
 
-function DoseTimeEditor({ dose, onChange }) {
+function DoseTimeEditor({ dose, onChange, readOnly = false }) {
   const takenAt = dose.record?.takenAt ? new Date(dose.record.takenAt) : null
   const displayedAt = takenAt && !Number.isNaN(takenAt.getTime()) ? takenAt : dose.scheduledAt
   const initial = displayedAt.toTimeString().slice(0, 5)
@@ -338,8 +370,10 @@ function DoseTimeEditor({ dose, onChange }) {
   }
   return (
     <div className="dose-time-editor" onClick={(event) => event.stopPropagation()}>
-      <TimeInput compact label={`${takenAt ? 'Taken' : 'Scheduled'} time for ${dose.medication.name}`} value={value}
-        onChange={setValue} onComplete={save} />
+      {readOnly
+        ? <span className="dose-time-readonly">{formatTime(value)}</span>
+        : <TimeInput compact label={`${takenAt ? 'Taken' : 'Scheduled'} time for ${dose.medication.name}`} value={value}
+            onChange={setValue} onComplete={save} />}
     </div>
   )
 }
@@ -835,10 +869,19 @@ function DoseCard({ dose, onTaken, onSkip, onUndo, onTimeChange, onOpen }) {
   const gesture = useRef(null)
   const rowRef = useRef(null)
   const moved = useRef(false)
+  const { canEdit, canViewHistory } = medicationPermissions(dose.medication)
+  const canRecord = canEdit && canViewHistory
+  const readOnlyToggleClass = isSkipped
+    ? 'skipped'
+    : isTaken
+      ? 'complete'
+      : isMissed
+        ? 'overdue'
+        : ''
   const width = () => rowRef.current?.offsetWidth || 320
 
   const startSwipe = (event) => {
-    if (dose.record) return
+    if (dose.record || !canRecord) return
     const touch = event.touches[0]
     gesture.current = { x: touch.clientX, y: touch.clientY, horizontal: null }
     moved.current = false
@@ -885,9 +928,9 @@ function DoseCard({ dose, onTaken, onSkip, onUndo, onTimeChange, onOpen }) {
   const skipProgress = Math.max(0, Math.min(1, -dragX / width()))
   return (
     <div className="dose-swipe-wrap" ref={rowRef}>
-      <div className="dose-skip-fill" style={{ opacity: Math.pow(skipProgress, 4) }}>
+      {canRecord && <div className="dose-skip-fill" style={{ opacity: Math.pow(skipProgress, 4) }}>
         <span>Skip</span><Icon name="close" size={22} />
-      </div>
+      </div>}
       <div className={`dose-row ${status} clickable`} role="button" tabIndex="0"
         style={{ transform: `translateX(${dragX}px)`, transition: dragX ? 'none' : 'transform .2s ease' }}
         aria-label={`View ${dose.medication.name} details`}
@@ -896,7 +939,7 @@ function DoseCard({ dose, onTaken, onSkip, onUndo, onTimeChange, onOpen }) {
         onKeyDown={(event) => { if (event.currentTarget === event.target && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onOpen(dose.medication) } }}>
         <div className="dose-time-column">
           {isTaken && <span className="dose-time-label">Taken at:</span>}
-          <DoseTimeEditor dose={dose} onChange={onTimeChange} />
+          <DoseTimeEditor dose={dose} onChange={onTimeChange} readOnly={!canEdit} />
         </div>
         <div className="dose-dot"><span /></div>
         <div className="dose-info">
@@ -905,7 +948,16 @@ function DoseCard({ dose, onTaken, onSkip, onUndo, onTimeChange, onOpen }) {
           <span>{dose.medication.dose || 'Dose not set'} · {frequencyLabel(dose.medication)}</span>
         </div>
         <div className="dose-action-column">
-          {isSkipped ? (
+          {!canRecord ? (
+            <>
+              <button className={`taken-toggle ${readOnlyToggleClass}`}
+                title="Read only" aria-label={`${isTaken ? 'Taken' : isSkipped ? 'Skipped' : 'Not taken'}, read only`}
+                aria-pressed={isTaken ? 'true' : 'false'} disabled>
+                <Icon name={isSkipped ? 'close' : 'check'} size={20} />
+              </button>
+              <span className="read-only-label">Read only</span>
+            </>
+          ) : isSkipped ? (
             <button className="taken-toggle skipped" title="Undo skip" aria-label="Undo skip"
               onClick={(event) => { event.stopPropagation(); onUndo(dose) }}><Icon name="close" size={20} /></button>
           ) : isTaken ? (
@@ -927,6 +979,127 @@ const injectionSites = [
   { id: 'right-upper', label: 'Right upper thigh', side: 'right', section: 'upper' },
   { id: 'right-lower', label: 'Right lower thigh', side: 'right', section: 'lower' },
 ]
+
+function SharingModal({ sharing, onClose }) {
+  const [username, setUsername] = useState('')
+  const [role, setRole] = useState('viewer')
+  const [canViewHistory, setCanViewHistory] = useState(false)
+  const [feedback, setFeedback] = useState('')
+  const permissions = { role, canViewHistory }
+  const busy = sharing.status === 'busy' || sharing.status === 'loading'
+
+  const submitUsername = async (event) => {
+    event.preventDefault()
+    if (!username.trim()) return
+    try {
+      await sharing.inviteUsername(username.trim(), permissions)
+      setUsername('')
+      setFeedback('Invitation created if that account is available.')
+    } catch {
+      // Stable feedback is rendered in the modal.
+    }
+  }
+  const createLink = async () => {
+    try {
+      await sharing.createLink(permissions)
+      setFeedback('Invitation link created.')
+    } catch {
+      // Stable feedback is rendered in the modal.
+    }
+  }
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(sharing.link)
+      setFeedback('Invitation link copied.')
+    } catch {
+      // The selectable link remains available when clipboard access is denied.
+    }
+  }
+  const revokeMember = async (userId) => {
+    try {
+      await sharing.revokeMember(userId)
+      setFeedback('Access revoked.')
+    } catch {
+      // Stable feedback is rendered in the modal.
+    }
+  }
+  const revokeInvitation = async (id) => {
+    try {
+      await sharing.revokeInvitation(id)
+      setFeedback('Invitation revoked.')
+    } catch {
+      // Stable feedback is rendered in the modal.
+    }
+  }
+
+  return (
+    <div className="modal-backdrop sharing-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="modal sharing-modal" aria-labelledby="sharing-title" aria-busy={busy}>
+        <div className="modal-head">
+          <h2 className="modal-title" id="sharing-title">Medication list</h2>
+          <SmallIconButton label="Close sharing" name="close" onClick={onClose} />
+        </div>
+        {sharing.error && <p className="sharing-feedback error" role="alert">{sharing.error}</p>}
+        {feedback && !sharing.error && <p className="sharing-feedback" role="status">{feedback}</p>}
+        <fieldset className="sharing-permissions">
+          <legend>Invitation access</legend>
+          <div className="sharing-role-picker">
+            {['viewer', 'editor'].map((value) => <button type="button" key={value}
+              className={role === value ? 'active' : ''} aria-pressed={role === value}
+              onClick={() => setRole(value)}>{value === 'viewer' ? 'Viewer' : 'Editor'}</button>)}
+          </div>
+          <div className="sharing-history-options" role="radiogroup"
+            aria-label="Medication list sharing access">
+            <label>
+              <input type="radio" name="history-access" checked={!canViewHistory}
+                onChange={() => setCanViewHistory(false)} />
+              <span>Share medication list</span>
+            </label>
+            <label>
+              <input type="radio" name="history-access" checked={canViewHistory}
+                onChange={() => setCanViewHistory(true)} />
+              <span>Share medication list, dose history &amp; schedule</span>
+            </label>
+          </div>
+        </fieldset>
+        <form className="username-invite" onSubmit={submitUsername}>
+          <label>Invite by exact username
+            <div><input value={username} autoCapitalize="none" autoCorrect="off"
+              placeholder="username" onChange={(event) => setUsername(event.target.value)} />
+              <button className="secondary-action" disabled={busy || !username.trim()}>Invite</button></div>
+          </label>
+        </form>
+        <div className="link-invite">
+          <button type="button" className="secondary-action" disabled={busy} onClick={createLink}>
+            Create invitation link
+          </button>
+          {sharing.link && <div className="generated-link">
+            <input readOnly value={sharing.link} aria-label="Invitation link" onFocus={(event) => event.target.select()} />
+            <SmallIconButton label="Copy invitation link" name="copy" onClick={copyLink} />
+          </div>}
+        </div>
+        <section className="share-management" aria-labelledby="shared-access-title">
+          <h3 id="shared-access-title">People with access</h3>
+          {sharing.status === 'loading' && <p className="sharing-empty">Loading access…</p>}
+          {sharing.status !== 'loading' && !sharing.members.length && <p className="sharing-empty">No one else has access.</p>}
+          {sharing.members.map((member) => <div className="share-row" key={member.userId}>
+            <Avatar user={member} size="medium" />
+            <span><strong>@{member.username}</strong><small>{member.role === 'editor' ? 'Editor' : 'Viewer'} · {member.canViewHistory ? 'History visible' : 'History private'}</small></span>
+            <SmallIconButton label={`Revoke access for ${member.username}`} name="trash" className="danger"
+              disabled={busy} onClick={() => revokeMember(member.userId)} />
+          </div>)}
+          {sharing.invitations.length > 0 && <h3>Pending invitations</h3>}
+          {sharing.invitations.map((invitation) => <div className="share-row" key={invitation.id}>
+            <span><strong>{invitation.username ? `@${invitation.username}` : 'Invitation link'}</strong>
+              <small>{invitation.permissions.role === 'editor' ? 'Editor' : 'Viewer'} · {invitation.permissions.canViewHistory ? 'History visible' : 'History private'}</small></span>
+            <SmallIconButton label="Revoke invitation" name="trash" className="danger"
+              disabled={busy} onClick={() => revokeInvitation(invitation.id)} />
+          </div>)}
+        </section>
+      </section>
+    </div>
+  )
+}
 
 function InjectionSiteMap({ medication, onSelect, compact = false }) {
   const recentSites = getRecentInjectionSites(medication)
@@ -970,8 +1143,11 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
   const calendarScrollRef = useRef(null)
   const calendarLoad = useRef(null)
   const currentMonthKey = `${now.getFullYear()}-${now.getMonth()}`
-  const next = getNextDose([medication], now)
-  const calendarMonths = medicationCalendarMonths(medication, now, { pastMonths, futureMonths })
+  const permissions = medicationPermissions(medication)
+  const next = permissions.canViewSchedule ? getNextDose([medication], now) : null
+  const calendarMonths = permissions.canViewHistory
+    ? medicationCalendarMonths(medication, now, { pastMonths, futureMonths })
+    : []
 
   useEffect(() => {
     const container = calendarScrollRef.current
@@ -1050,30 +1226,30 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
     <div className="modal-backdrop details-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <article className="modal details-modal">
         <div className="medication-actions details-actions">
-          <SmallIconButton label="Edit medication" name="edit" onClick={() => onEdit(medication)} />
+          {permissions.canEdit && <SmallIconButton label="Edit medication" name="edit" onClick={() => onEdit(medication)} />}
           <SmallIconButton label="Close" name="close" onClick={onClose} />
         </div>
         <div className="modal-head">
           <div>{medication.paused && <span className="eyebrow">Paused</span>}<h2 className="modal-title">{medication.name}</h2><p className="detail-dose">{medication.dose || 'Dose not set'}</p></div>
         </div>
         <div className="detail-list">
-          <div><span>Schedule</span><strong>{scheduleLabels(medication).join(' · ')}</strong></div>
-          <div><span>Next dose</span><strong>{medication.paused ? 'Paused' : next ? formatDateTime(next.scheduledAt) : '—'}</strong></div>
+          <div><span>Schedule</span><strong>{permissions.canViewSchedule ? scheduleLabels(medication).join(' · ') : 'Not shared'}</strong></div>
+          <div><span>Next dose</span><strong>{permissions.canViewSchedule ? medication.paused ? 'Paused' : next ? formatDateTime(next.scheduledAt) : '—' : 'Not shared'}</strong></div>
           <div className="detail-inventory"><span>Inventory</span>
             <strong>{medication.inventory?.remaining == null ? 'Not tracked' : `${inventoryInteger(medication.inventory.remaining)} ${medication.inventory.unit}`}</strong>
-            <div className="detail-inventory-controls">
+            {permissions.canEdit && <div className="detail-inventory-controls">
               <SmallIconButton label={`Decrease ${medication.name} inventory`} name="chevron-down" className="inventory-adjust"
                 onClick={() => onAdjustInventory(medication, -1)} />
               <SmallIconButton label={`Increase ${medication.name} inventory`} name="chevron-up" className="inventory-adjust"
                 onClick={() => onAdjustInventory(medication, 1)} />
-            </div>
+            </div>}
           </div>
         </div>
         {medication.trackInjectionSite && <section className="detail-site-map">
           <InjectionSiteMap medication={medication} compact />
         </section>}
         {medication.notes && <section className="detail-instructions"><span>Instructions</span><p>{medication.notes}</p></section>}
-        <section className="medication-calendar">
+        {permissions.canViewHistory && <section className="medication-calendar">
           <div className="calendar-heading"><span className="eyebrow">Dose history</span><small>Scroll for past and future months</small></div>
           <div className="calendar-scroll" ref={calendarScrollRef} onScroll={loadCalendarAtEdge}>
             {calendarMonths.map((month) => (
@@ -1087,8 +1263,8 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
                     const future = isFutureLocalDate(date.dateKey, now)
                     const label = `${month.label} ${date.day}${date.count ? `, taken ${date.count} ${date.count === 1 ? 'time' : 'times'}` : ''}${date.missedCount ? `, missed ${date.missedCount}` : ''}`
                     return <div className={`calendar-day ${date.count ? 'taken' : ''} ${date.missedCount ? 'missed' : ''}`} key={date.day}>
-                      <button type="button" aria-label={label} aria-expanded={selected}
-                        disabled={future}
+                      <button type="button" aria-label={label} aria-expanded={permissions.canEdit ? selected : undefined}
+                        disabled={future || !permissions.canEdit}
                         onClick={() => selectHistoryDate(date, month.label)}>{date.day}</button>
                       {date.count > 1 && <small>{date.count} times</small>}
                       {date.count === 1 && date.injectionSites[0] && <small>{date.injectionSites[0]}</small>}
@@ -1098,7 +1274,11 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
               </div>
             ))}
           </div>
-        </section>
+        </section>}
+        {!permissions.canViewHistory && <section className="history-private" aria-label="Dose history access">
+          <span className="eyebrow">Dose history</span>
+          <p>The owner has kept dose history private.</p>
+        </section>}
         {selectedDate && <div className="history-warning-backdrop" role="dialog" aria-modal="true"
           aria-labelledby="history-date-title" onMouseDown={(event) => event.target === event.currentTarget && closeHistoryDate()}>
           <div className="history-warning history-record-modal">
@@ -1192,18 +1372,155 @@ function InjectionSitePicker({ medication, onSelect, onClose }) {
   )
 }
 
+function SwapProfileIcon() {
+  return (
+    <svg className="profile-swap-icon" viewBox="0 0 48 48" aria-hidden="true">
+      <circle cx="24" cy="24" r="22" fill="#E3E3E3" />
+      <path fill="#6B7280" d="M24 2a22 22 0 1 0 22 22A21.9 21.9 0 0 0 24 2Zm.3 29.5-4.9 4.9a1.9 1.9 0 0 1-2.8 0l-4.9-4.9a2.2 2.2 0 0 1-.4-2.7 2 2 0 0 1 3.1-.2l1.6 1.6V15a2 2 0 0 1 4 0v15.2l1.6-1.6a2 2 0 0 1 3.1.2 2.2 2.2 0 0 1-.4 2.7Zm12.4-12.3a2 2 0 0 1-3.1.2L32 17.8V33a2 2 0 0 1-4 0V17.8l-1.6 1.6a2 2 0 0 1-3.1-.2 2.1 2.1 0 0 1 .4-2.7l4.9-4.9a1.9 1.9 0 0 1 2.8 0l4.9 4.9a2.1 2.1 0 0 1 .4 2.7Z" />
+    </svg>
+  )
+}
+
+function MedicationProfileSwitcher({ profiles, selectedId, onSelect }) {
+  const [open, setOpen] = useState(false)
+  const selected = profiles.find((profile) => profile.ownerUserId === selectedId) || profiles[0]
+  if (!selected || profiles.length < 2) return null
+
+  return (
+    <div className="medication-profile-switcher">
+      <button type="button" className="medication-profile-trigger"
+        aria-label={`Medication profile: ${selected.username}`}
+        aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        <Avatar user={selected} size="medium" />
+        <SwapProfileIcon />
+      </button>
+      {open && <div className="medication-profile-menu" role="menu">
+        {profiles.map((profile) => {
+          const permission = profile.role === 'owner'
+            ? 'Your medication list'
+            : `${profile.role === 'editor' ? 'Editor' : 'Viewer'} · ${
+              profile.canViewHistory ? 'Dose history visible' : 'Schedule only'
+            }`
+          return <button type="button" role="menuitemradio"
+            aria-checked={profile.ownerUserId === selected.ownerUserId}
+            className={profile.ownerUserId === selected.ownerUserId ? 'active' : ''}
+            key={profile.ownerUserId} onClick={() => {
+              onSelect(profile.ownerUserId)
+              setOpen(false)
+            }}>
+            <Avatar user={profile} size="medium" />
+            <span><strong>@{profile.username}</strong><small>{permission}</small></span>
+          </button>
+        })}
+      </div>}
+    </div>
+  )
+}
+
+function SharedWith({ members }) {
+  const [hovered, setHovered] = useState(null)
+  const [selected, setSelected] = useState(null)
+  return (
+    <div className="shared-with">
+      <span>Shared with</span>
+      <div className="shared-avatar-list">
+        {members.map((member) => {
+          const visible = hovered === member.userId || selected === member.userId
+          return <button type="button" className="shared-avatar" key={member.userId}
+            aria-label={`Shared with @${member.username}`}
+            aria-expanded={visible}
+            onMouseEnter={() => setHovered(member.userId)}
+            onMouseLeave={() => setHovered(null)}
+            onFocus={() => setHovered(member.userId)}
+            onBlur={() => setHovered(null)}
+            onClick={() => setSelected((current) =>
+              current === member.userId ? null : member.userId)}>
+            <Avatar user={member} size="medium" />
+            {visible && <span className="shared-avatar-tooltip" role="tooltip">
+              @{member.username}
+            </span>}
+          </button>
+        })}
+      </div>
+    </div>
+  )
+}
+
 function App({ colorScheme = 'dark' }) {
-  const [medications, setMedications] = useMedications()
+  const [initialNavigation] = useState(loadMediraNavigation)
+  const [medications, setMedications, medicationsLoaded, medicationSync] = useMedications()
   const [now, setNow] = useState(new Date())
-  const [view, setView] = useState(loadMediraView)
+  const [view, setView] = useState(initialNavigation.view)
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [notice, setNotice] = useState('')
   const [pendingDose, setPendingDose] = useState(null)
   const [viewingMedication, setViewingMedication] = useState(null)
+  const pendingViewingMedicationId = useRef(initialNavigation.viewingMedicationId)
   const [confirmingDelete, setConfirmingDelete] = useState(null)
+  const [showSharing, setShowSharing] = useState(false)
+  const [selectedProfileId, setSelectedProfileId] = useState(
+    initialNavigation.selectedProfileId,
+  )
   const [hasPushSubscription, setHasPushSubscription] = useState(false)
   const [deviceTimeZone, setDeviceTimeZone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
+  const sharing = useMedicationSharing(sharingEnabled)
+  const medicationProfiles = sharing.profiles
+  const ownProfile = medicationProfiles.find((profile) => profile.role === 'owner')
+  const selectedProfile = medicationProfiles.find(
+    (profile) => profile.ownerUserId === selectedProfileId,
+  ) || ownProfile
+  const visibleMedications = useMemo(() => {
+    if (!selectedProfile) return medications
+    return medications.filter((medication) => {
+      const ownerUserId = medicationPermissions(medication).ownerUserId
+      return ownerUserId
+        ? ownerUserId === selectedProfile.ownerUserId
+        : selectedProfile.role === 'owner'
+    })
+  }, [medications, selectedProfile])
+  const ownMedications = useMemo(() => medications.filter((medication) => (
+    medicationPermissions(medication).role === 'owner'
+  )), [medications])
+
+  useEffect(() => {
+    if (selectedProfile && selectedProfile.ownerUserId !== selectedProfileId) {
+      setSelectedProfileId(selectedProfile.ownerUserId)
+    }
+  }, [selectedProfile, selectedProfileId])
+
+  useEffect(() => {
+    if (!medicationsLoaded || !pendingViewingMedicationId.current) return
+    const medication = medications.find(
+      (item) => item.id === pendingViewingMedicationId.current,
+    )
+    pendingViewingMedicationId.current = ''
+    if (medication) setViewingMedication(medication)
+  }, [medications, medicationsLoaded])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(NAVIGATION_STORAGE_KEY, JSON.stringify({
+        view,
+        selectedProfileId: selectedProfile?.ownerUserId || selectedProfileId,
+        viewingMedicationId: viewingMedication?.id || pendingViewingMedicationId.current,
+      }))
+    } catch {
+      // Navigation still works when storage is unavailable.
+    }
+  }, [selectedProfile, selectedProfileId, view, viewingMedication])
+
+  useEffect(() => {
+    const refreshSharedMedicationList = () => {
+      medicationSync.refetch().catch(() => {})
+      sharing.refresh().catch(() => {})
+    }
+    window.addEventListener('chrona:invite-accepted', refreshSharedMedicationList)
+    return () => window.removeEventListener(
+      'chrona:invite-accepted',
+      refreshSharedMedicationList,
+    )
+  }, [medicationSync, sharing])
 
   useEffect(() => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
@@ -1219,10 +1536,10 @@ function App({ colorScheme = 'dark' }) {
   useEffect(() => {
     if (!hasPushSubscription) return
     const timer = setTimeout(() => {
-      syncPushReminders(medications).catch((error) => console.error('Could not sync medication reminders:', error))
+      syncPushReminders(ownMedications).catch((error) => console.error('Could not sync medication reminders:', error))
     }, 500)
     return () => clearTimeout(timer)
-  }, [deviceTimeZone, hasPushSubscription, medications])
+  }, [deviceTimeZone, hasPushSubscription, ownMedications])
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30_000)
@@ -1243,16 +1560,27 @@ function App({ colorScheme = 'dark' }) {
     }
   }
 
+  useEffect(() => {
+    if (view === 'today' && selectedProfile
+      && selectedProfile.role !== 'owner'
+      && !selectedProfile?.canViewHistory) {
+      navigate('medications')
+    }
+  }, [selectedProfile, view])
+
+  const scheduleMedications = useMemo(() => visibleMedications.filter(
+    (medication) => medicationPermissions(medication).canViewSchedule,
+  ), [visibleMedications])
   const tomorrow = useMemo(() => {
     const date = new Date(now)
     date.setDate(date.getDate() + 1)
     return date
   }, [now])
-  const todayDoses = useMemo(() => getActionableDoses(medications, now), [medications, now])
-  const tomorrowDoses = useMemo(() => getDosesForDay(medications, tomorrow), [medications, tomorrow])
+  const todayDoses = useMemo(() => getActionableDoses(scheduleMedications, now), [scheduleMedications, now])
+  const tomorrowDoses = useMemo(() => getDosesForDay(scheduleMedications, tomorrow), [scheduleMedications, tomorrow])
   const takenToday = todayDoses.filter((dose) => dose.record?.status === 'on-time' || dose.record?.status === 'late').length
-  const next = useMemo(() => getNextDose(medications, now), [medications, now])
-  const reminder = useMemo(() => getNextReminder(medications, now), [medications, now])
+  const next = useMemo(() => getNextDose(scheduleMedications, now), [scheduleMedications, now])
+  const reminder = useMemo(() => getNextReminder(ownMedications, now), [ownMedications, now])
   useEffect(() => {
     if (hasPushSubscription || !reminder || !('Notification' in window) || Notification.permission !== 'granted') return
     const delay = reminder.alertAt - Date.now()
@@ -1270,6 +1598,8 @@ function App({ colorScheme = 'dark' }) {
   }, [hasPushSubscription, reminder])
 
   const markTaken = (dose) => {
+    const permissions = medicationPermissions(dose.medication)
+    if (!permissions.canEdit || !permissions.canViewHistory) return
     if (dose.medication.trackInjectionSite) {
       setPendingDose(dose)
       return
@@ -1278,6 +1608,8 @@ function App({ colorScheme = 'dark' }) {
   }
 
   const completeTaken = (dose, injectionSite = null) => {
+    const permissions = medicationPermissions(dose.medication)
+    if (!permissions.canEdit || !permissions.canViewHistory) return
     unlockSounds()
     const takenAt = new Date()
     const adjustment = adjustScheduleAfterDose(dose.medication, dose, takenAt)
@@ -1303,6 +1635,8 @@ function App({ colorScheme = 'dark' }) {
   }
 
   const skipDose = (dose) => {
+    const permissions = medicationPermissions(dose.medication)
+    if (!permissions.canEdit || !permissions.canViewHistory) return
     const skippedAt = new Date().toISOString()
     setMedications((items) => items.map((medication) => medication.id !== dose.medication.id ? medication : {
       ...medication,
@@ -1316,6 +1650,8 @@ function App({ colorScheme = 'dark' }) {
   }
 
   const undoTaken = (dose) => {
+    const permissions = medicationPermissions(dose.medication)
+    if (!permissions.canEdit || !permissions.canViewHistory) return
     setMedications((items) => items.map((medication) => {
       if (medication.id !== dose.medication.id) return medication
       const record = medication.history.find((entry) => entry.id === dose.record.id)
@@ -1327,6 +1663,7 @@ function App({ colorScheme = 'dark' }) {
   }
 
   const overrideDoseTime = (dose, time) => {
+    if (!medicationPermissions(dose.medication).canEdit) return
     setMedications((items) => items.map((medication) => (
       medication.id === dose.medication.id ? updateDoseTime(medication, dose, time) : medication
     )))
@@ -1348,6 +1685,7 @@ function App({ colorScheme = 'dark' }) {
   }
 
   const togglePause = (medication) => {
+    if (!medicationPermissions(medication).canEdit) return
     const timestamp = new Date().toISOString()
     setMedications((items) => items.map((item) => {
       if (item.id !== medication.id) return item
@@ -1365,6 +1703,7 @@ function App({ colorScheme = 'dark' }) {
   }
 
   const adjustInventory = (medication, amount) => {
+    if (!medicationPermissions(medication).canEdit) return
     setMedications((items) => items.map((item) => item.id !== medication.id ? item : {
       ...item,
       inventory: {
@@ -1375,6 +1714,8 @@ function App({ colorScheme = 'dark' }) {
   }
 
   const changeTakenHistory = (medication, edits, deletedRecordIds, newDose) => {
+    const permissions = medicationPermissions(medication)
+    if (!permissions.canEdit || !permissions.canViewHistory) return
     setMedications((items) => items.map((item) => (
       item.id === medication.id
         ? (() => {
@@ -1391,12 +1732,12 @@ function App({ colorScheme = 'dark' }) {
   }
 
   const copyMedicationList = async () => {
-    if (!medications.length) {
+    if (!visibleMedications.length) {
       setNotice('No medications to copy')
       setTimeout(() => setNotice(''), 2600)
       return
     }
-    const content = medicationListClipboardContent(medications)
+    const content = medicationListClipboardContent(visibleMedications)
     try {
       let copied = false
       if (navigator.clipboard?.write && window.ClipboardItem) {
@@ -1422,11 +1763,32 @@ function App({ colorScheme = 'dark' }) {
     setTimeout(() => setNotice(''), 2600)
   }
 
+  const switchMedicationProfile = (ownerUserId) => {
+    setSelectedProfileId(ownerUserId)
+    const nextProfile = medicationProfiles.find((profile) =>
+      profile.ownerUserId === ownerUserId)
+    if (nextProfile?.role !== 'owner' && !nextProfile?.canViewHistory && view === 'today') {
+      navigate('medications')
+    }
+    Promise.all([
+      medicationSync.refetch(),
+      sharing.refresh(),
+    ]).catch(() => {
+      // Existing synchronization feedback surfaces the request failure.
+    })
+  }
+
   return (
     <FluentProvider theme={colorScheme === 'light' ? mediraLightTheme : mediraTheme}
       className={`medira-shell ${colorScheme}`}>
       <div className="app">
       <div className="medira-main">
+        {medicationSync.error && <div className="sync-conflict" role="alert">
+          <span>{medicationSync.error.status === 409
+            ? 'This medication changed elsewhere. Your view was reloaded with the latest version.'
+            : 'Medication changes could not be synced.'}</span>
+          <button type="button" className="secondary-action" onClick={() => medicationSync.refetch().catch(() => {})}>Reload</button>
+        </div>}
         {view === 'today' && (
           <div className="view-anim forward">
             <div className="hero-copy">
@@ -1459,16 +1821,28 @@ function App({ colorScheme = 'dark' }) {
 
         {view === 'medications' && (
           <div className="view-anim forward">
-            <div className="page-head"><div><h1 className="page-title">Medication list</h1><p>{medications.filter((med) => !med.paused).length} active · {medications.filter((med) => med.paused).length} paused</p></div>
+            <div className="page-head medication-list-head">
+              <h1 className="page-title">Medication list</h1>
+              <div className="medication-list-toolbar">
+                <div className="medication-list-summary">
+                  <p>{visibleMedications.filter((med) => !med.paused).length} active · {visibleMedications.filter((med) => med.paused).length} paused</p>
+                  {selectedProfile?.role === 'owner' && sharing.members.length > 0 &&
+                    <SharedWith members={sharing.members} />}
+                </div>
               <div className="page-actions">
+                {sharingEnabled && selectedProfile?.role === 'owner' &&
+                  <SmallIconButton label="Share medication list" name="user-add" onClick={() => setShowSharing(true)} />}
                 <SmallIconButton label="Copy medication list" name="copy" onClick={copyMedicationList} />
-                <SmallIconButton label="Add medication" name="plus" className="add-medication-btn" onClick={() => setShowForm(true)} />
+                {selectedProfile?.role !== 'viewer' && selectedProfile?.role !== 'editor' &&
+                  <SmallIconButton label="Add medication" name="plus" className="add-medication-btn" onClick={() => setShowForm(true)} />}
+              </div>
               </div>
             </div>
             <div className="med-grid">
-              {medications.map((med, index) => {
+              {visibleMedications.map((med, index) => {
+                const permissions = medicationPermissions(med)
                 const last = getLastTaken(med)
-                const medNext = getNextDose([med], now)
+                const medNext = permissions.canViewSchedule ? getNextDose([med], now) : null
                 const lowStock = med.inventory?.remaining != null
                   && inventoryInteger(med.inventory.remaining) <= inventoryInteger(med.inventory.refillAt)
                 return <div className={`card-wrap ${index % 2 ? 'purple' : ''} ${med.paused ? 'paused' : ''}`} key={med.id}><article
@@ -1476,21 +1850,25 @@ function App({ colorScheme = 'dark' }) {
                   onClick={() => setViewingMedication(med)}
                   onKeyDown={(event) => { if (event.currentTarget === event.target && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setViewingMedication(med) } }}>
                   <div className="med-card-head"><div className="med-symbol"><Icon name={med.trackInjectionSite ? 'syringe' : 'pill'} size={20} /></div><div className="medication-actions" onClick={(event) => event.stopPropagation()}>
-                    <SmallIconButton label={`${med.paused ? 'Resume' : 'Pause'} ${med.name}`} name={med.paused ? 'play' : 'pause'} className={med.paused ? 'resume' : ''} onClick={() => togglePause(med)} />
-                    <SmallIconButton label={`Edit ${med.name}`} name="edit" onClick={() => setEditing(med)} />
-                    <SmallIconButton label={`Delete ${med.name}`} name="trash" className="danger" onClick={() => setConfirmingDelete(med)} />
+                    {permissions.canEdit && <SmallIconButton label={`${med.paused ? 'Resume' : 'Pause'} ${med.name}`} name={med.paused ? 'play' : 'pause'} className={med.paused ? 'resume' : ''} onClick={() => togglePause(med)} />}
+                    {permissions.canEdit && <SmallIconButton label={`Edit ${med.name}`} name="edit" onClick={() => setEditing(med)} />}
+                    {permissions.canDelete && <SmallIconButton label={`Delete ${med.name}`} name="trash" className="danger" onClick={() => setConfirmingDelete(med)} />}
                   </div></div>
-                  <div className="med-name-row"><h2 className="card-title">{med.name}</h2>{med.paused && <span className="paused-badge">Paused</span>}</div><p className="dose-label">{med.dose || 'Dose not specified'}</p>
-                  {med.trackInjectionSite && <div className="meta-row"><span className="meta-pill injection">Injection</span></div>}
+                  <div className="med-name-row"><h2 className="card-title">{med.name}</h2>{med.paused && <span className="paused-label">Paused</span>}</div><p className="dose-label">{med.dose || 'Dose not specified'}</p>
                   {med.notes && <div className="notes"><p>{med.notes}</p></div>}
                   <div className={`inventory-row ${lowStock ? 'low' : ''}`}>
                     <span>Inventory<strong>{med.inventory?.remaining == null ? 'Not tracked' : `${inventoryInteger(med.inventory.remaining)} ${med.inventory.unit}`}</strong></span>
-                    <div className="inventory-controls" onClick={(event) => event.stopPropagation()}>
+                    {permissions.canEdit && <div className="inventory-controls" onClick={(event) => event.stopPropagation()}>
                       <SmallIconButton label={`Decrease ${med.name} inventory`} name="chevron-down" className="inventory-adjust" onClick={() => adjustInventory(med, -1)} />
                       <SmallIconButton label={`Increase ${med.name} inventory`} name="chevron-up" className="inventory-adjust" onClick={() => adjustInventory(med, 1)} />
-                    </div>
+                    </div>}
                   </div>
-                  <div className="med-footer"><span>Last taken<strong>{last ? formatDateTime(last.takenAt) : 'Not taken'}</strong></span><span>Next dose<strong>{med.paused ? 'Paused' : medNext ? formatDateTime(medNext.scheduledAt) : '—'}</strong></span><span>Frequency<strong>{scheduleLabels(med)[0]}</strong></span></div>
+                  <div className="med-footer">
+                    {permissions.canViewHistory && <span>Last taken<strong>{last ? formatDateTime(last.takenAt) : 'Not taken'}</strong></span>}
+                    <span>Next dose<strong>{permissions.canViewSchedule ? med.paused ? 'Paused' : medNext ? formatDateTime(medNext.scheduledAt) : '—' : 'Not shared'}</strong></span>
+                    <span>Frequency<strong>{permissions.canViewSchedule ? scheduleLabels(med)[0] : 'Not shared'}</strong></span>
+                    {!permissions.canViewHistory && <span>History<strong>Private</strong></span>}
+                  </div>
                 </article></div>
               })}
             </div>
@@ -1498,16 +1876,25 @@ function App({ colorScheme = 'dark' }) {
         )}
 
       </div>
-      <nav className="bottom-nav" aria-label="Medication views">
-        <button className={view === 'today' ? 'active' : ''} onClick={() => navigate('today')}
-          aria-label="Today’s schedule" aria-current={view === 'today' ? 'page' : undefined}>
-          <Icon name="clock" />
-        </button>
-        <button className={view === 'medications' ? 'active' : ''} onClick={() => navigate('medications')}
-          aria-label="Medication list" aria-current={view === 'medications' ? 'page' : undefined}>
-          <Icon name="list" />
-        </button>
-      </nav>
+      <div className={`medira-navigation ${medicationProfiles.length > 1 ? 'with-profiles' : ''}`}>
+        <MedicationProfileSwitcher profiles={medicationProfiles}
+          selectedId={selectedProfile?.ownerUserId} onSelect={switchMedicationProfile} />
+        <nav className="bottom-nav" aria-label="Medication views">
+          <button className={view === 'today' ? 'active' : ''}
+            disabled={selectedProfile?.role !== 'owner' && !selectedProfile?.canViewHistory}
+            onClick={() => navigate('today')}
+            aria-label={selectedProfile?.role !== 'owner' && !selectedProfile?.canViewHistory
+              ? 'Schedule is not shared for this profile'
+              : 'Today’s schedule'}
+            aria-current={view === 'today' ? 'page' : undefined}>
+            <Icon name="clock" />
+          </button>
+          <button className={view === 'medications' ? 'active' : ''} onClick={() => navigate('medications')}
+            aria-label="Medication list" aria-current={view === 'medications' ? 'page' : undefined}>
+            <Icon name="list" />
+          </button>
+        </nav>
+      </div>
       {(showForm || editing) && <MedicationForm initial={editing} onSave={saveMedication} onClose={() => { setShowForm(false); setEditing(null) }} />}
       {viewingMedication && <MedicationDetails
         medication={medications.find((medication) => medication.id === viewingMedication.id) || viewingMedication}
@@ -1516,6 +1903,8 @@ function App({ colorScheme = 'dark' }) {
         onAdjustInventory={adjustInventory}
         onOverrideTakenHistory={changeTakenHistory}
         onEdit={(medication) => { setViewingMedication(null); setEditing(medication) }} />}
+      {sharingEnabled && showSharing && <SharingModal
+        sharing={sharing} onClose={() => setShowSharing(false)} />}
       {pendingDose && <InjectionSitePicker medication={pendingDose.medication} onSelect={(site) => completeTaken(pendingDose, site)} onClose={() => setPendingDose(null)} />}
       {confirmingDelete && (
         <div className="modal-overlay" onClick={() => setConfirmingDelete(null)}>

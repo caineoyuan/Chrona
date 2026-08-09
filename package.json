@@ -9,6 +9,7 @@
     "build": "vite build",
     "lint": "oxlint",
     "test": "node --test",
+    "check:sharing-readiness": "node scripts/check-sharing-readiness.mjs",
     "preview": "vite preview",
     "start": "node server.js"
   },
@@ -23,6 +24,7 @@
     "pg": "^8.22.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "sharp": "^0.34.5",
     "tesseract.js": "^7.0.0",
     "web-push": "^3.6.7"
   },
