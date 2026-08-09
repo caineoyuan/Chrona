@@ -19,7 +19,7 @@ test('medication list cards use their full width and show concise schedule detai
   assert.doesNotMatch(card, /How to take|Doses taken|Starts /)
   assert.match(
     css,
-    /\.med-grid \.med-card \{[^}]*grid-template-columns: 36px minmax\(0, 1fr\);[^}]*column-gap: 8px;[^}]*padding-block: 16px;/,
+    /\.med-grid \.med-card \{[^}]*grid-template-columns: 36px minmax\(0, 1fr\);[^}]*column-gap: 8px;[^}]*padding-block: 16px 24px;/,
   )
   assert.match(css, /\.med-grid \.med-card-head \{[^}]*grid-column: 1;[^}]*grid-row: 1;/)
   assert.match(css, /\.med-grid \.med-name-row \{[^}]*grid-row: 1;[^}]*align-self: center;[^}]*min-height: 36px;/)
