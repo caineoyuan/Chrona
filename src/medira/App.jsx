@@ -1481,7 +1481,7 @@ function App({ colorScheme = 'dark' }) {
                     <SmallIconButton label={`Delete ${med.name}`} name="trash" className="danger" onClick={() => setConfirmingDelete(med)} />
                   </div></div>
                   <div className="med-name-row"><h2 className="card-title">{med.name}</h2>{med.paused && <span className="paused-badge">Paused</span>}</div><p className="dose-label">{med.dose || 'Dose not specified'}</p>
-                  <div className="meta-row"><span className="meta-pill">{frequencyLabel(med)}</span>{med.trackInjectionSite && <span className="meta-pill injection">Injection</span>}</div>
+                  {med.trackInjectionSite && <div className="meta-row"><span className="meta-pill injection">Injection</span></div>}
                   {med.notes && <div className="notes"><p>{med.notes}</p></div>}
                   <div className={`inventory-row ${lowStock ? 'low' : ''}`}>
                     <span>Inventory<strong>{med.inventory?.remaining == null ? 'Not tracked' : `${inventoryInteger(med.inventory.remaining)} ${med.inventory.unit}`}</strong></span>

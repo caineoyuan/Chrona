@@ -294,7 +294,7 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .page-head { margin-bottom: 28px; }
 .med-grid { display: grid; grid-template-columns: 1fr; gap: 17px; }
 .med-card { padding: 16px; }
-.med-grid .med-card { display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; align-items: start; }
+.med-grid .med-card { display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; align-items: start; padding-block: 16px; }
 .med-grid .med-card-head { grid-column: 1; grid-row: 1; align-self: start; }
 .med-grid .med-card-head .medication-actions { position: absolute; top: 14px; right: 14px; }
 .med-grid .med-name-row, .med-grid .dose-label, .med-grid .meta-row { grid-column: 2; }
@@ -334,8 +334,10 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .med-footer { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); margin-top: 14px; padding-top: 16px; gap: 10px; }
 .med-footer span { color: var(--muted); font-size: var(--font-xs); display: flex; flex-direction: column; }
 .med-footer strong { color: var(--text); font-size: var(--font-xs); margin-top: 3px; }
+.med-grid .med-card :where(.notes, .inventory-row, .med-footer) {
+  border-top: 0;
+}
 .med-grid .med-card :where(
-  .card-title,
   .dose-label,
   .meta-pill,
   .permission-summary,
@@ -587,7 +589,7 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
   .med-grid .med-card { display: block; }
   .med-grid .med-card-head { display: flex; }
   .med-grid .med-card .card-title { margin-top: 24px; }
-  .med-grid .notes { padding-right: 0; border-top: 1px solid var(--line); padding-top: 16px; }
+  .med-grid .notes { padding-right: 0; border-top: 0; padding-top: 16px; }
   .med-grid .med-card-head .medication-actions { position: static; }
   .page-head { align-items: center; }
   .page-head .page-title { font-size: var(--font-lg); }

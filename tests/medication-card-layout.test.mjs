@@ -13,12 +13,13 @@ test('medication list cards use their full width and show concise schedule detai
     app.indexOf('</article>', app.indexOf('className="card med-card clickable"')),
   )
 
-  assert.match(card, /<span className="meta-pill">\{frequencyLabel\(med\)\}<\/span>/)
+  assert.doesNotMatch(card, /<span className="meta-pill">\{frequencyLabel\(med\)\}<\/span>/)
+  assert.match(card, /med\.trackInjectionSite && <div className="meta-row">/)
   assert.match(card, /<span>Frequency<strong>\{scheduleLabels\(med\)\[0\]\}<\/strong><\/span>/)
   assert.doesNotMatch(card, /How to take|Doses taken|Starts /)
   assert.match(
     css,
-    /\.med-grid \.med-card \{[^}]*grid-template-columns: 36px minmax\(0, 1fr\);[^}]*column-gap: 8px;/,
+    /\.med-grid \.med-card \{[^}]*grid-template-columns: 36px minmax\(0, 1fr\);[^}]*column-gap: 8px;[^}]*padding-block: 16px;/,
   )
   assert.match(css, /\.med-grid \.med-card-head \{[^}]*grid-column: 1;[^}]*grid-row: 1;/)
   assert.match(css, /\.med-grid \.med-name-row \{[^}]*grid-row: 1;[^}]*align-self: center;[^}]*min-height: 36px;/)
@@ -28,6 +29,9 @@ test('medication list cards use their full width and show concise schedule detai
   )
   assert.match(
     css,
-    /\.med-grid \.med-card :where\([\s\S]*\.card-title,[\s\S]*\.meta-pill,[\s\S]*\.notes p,[\s\S]*\.med-footer strong,[\s\S]*\.paused-badge[\s\S]*\) \{\s*font-size: var\(--font-sm\);/,
+    /\.med-grid \.med-card :where\([\s\S]*\.meta-pill,[\s\S]*\.notes p,[\s\S]*\.med-footer strong,[\s\S]*\.paused-badge[\s\S]*\) \{\s*font-size: var\(--font-sm\);/,
   )
+  assert.doesNotMatch(css, /\.med-grid \.med-card :where\(\s*\.card-title,/)
+  assert.match(css, /\.med-card \.card-title \{[^}]*font-size: var\(--font-md\);/)
+  assert.match(css, /\.med-grid \.med-card :where\(\.notes, \.inventory-row, \.med-footer\) \{\s*border-top: 0;/)
 })
