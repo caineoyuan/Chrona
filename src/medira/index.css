@@ -237,7 +237,7 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .ring-center strong { max-width: 88px; font-size: var(--font-md); line-height: 1; }
 .ring-center strong.long { font-size: var(--font-sm); line-height: 1.2; }
-.ring-center strong.extra-long { font-size: var(--font-xs); line-height: 1.2; }
+.ring-center strong.extra-long { max-width: 104px; font-size: var(--font-sm); line-height: 1.15; }
 .ring-center span { color: var(--muted); font-size: var(--font-xs); margin-top: 6px; }
 
 .section-head, .page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 17px; }
@@ -556,6 +556,7 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .medication-calendar { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--line); }
 .calendar-heading { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 16px; }
 .calendar-heading small { color: var(--muted); font-size: var(--font-xs); }
+.calendar-guidance { display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
 .calendar-scroll { display: flex; overflow-x: auto; overscroll-behavior-inline: contain; scroll-snap-type: x mandatory; scrollbar-color: var(--muted) transparent; }
 .calendar-month { flex: 0 0 100%; min-width: 0; scroll-snap-align: start; }
 .calendar-month h4 { margin: 0 0 16px; color: var(--text); font-family: var(--serif); font-size: var(--font-md); font-style: italic; font-weight: 400; }
@@ -565,6 +566,7 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .calendar-day { display: flex; min-width: 0; min-height: 48px; flex-direction: column; align-items: center; gap: 4px; color: var(--muted); font-size: var(--font-sm); }
 .calendar-day > button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; color: inherit; background: transparent; border: 2px solid transparent; border-radius: 50%; font-variant-numeric: tabular-nums; line-height: 1; text-align: center; }
 .calendar-day > button:disabled { cursor: default; }
+.calendar-day.current > button { font-weight: 700; }
 .calendar-day.taken > button { color: #073d31; background: var(--accent); font-weight: 700; }
 .calendar-day.missed > button { border-color: var(--accent); border-style: dashed; }
 .calendar-day small { color: var(--accent-ink); font-size: var(--font-xs); line-height: 1; text-align: center; white-space: nowrap; }
@@ -659,6 +661,7 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
   .hero-copy { grid-template-columns: 1fr 125px; gap: 5px; }
   .ring { width: 125px; height: 125px; }
   .ring-center strong { font-size: var(--font-sm); }
+  .ring-center strong.extra-long { max-width: 80px; font-size: var(--font-xs); line-height: 1.15; }
   .ring-center span { font-size: var(--font-xs); }
   .med-grid { grid-template-columns: 1fr; }
   .med-grid .med-card { display: block; }

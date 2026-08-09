@@ -96,6 +96,9 @@ const REMINDER_PRESETS = [
   { value: 60, label: '1 hour' },
 ]
 const REMINDER_PRESET_VALUES = REMINDER_PRESETS.map(({ value }) => value)
+const WEEKDAY_NAMES = [
+  'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+]
 
 function loadMediraView() {
   try {
@@ -139,13 +142,28 @@ function formatTime(time) {
   return new Date(`2000-01-01T${time}`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
+function weeklyFrequency(weekdays) {
+  const names = weekdays.map((day) => WEEKDAY_NAMES[day]).filter(Boolean)
+  return names.length
+    ? `Every ${new Intl.ListFormat(undefined, { type: 'conjunction' }).format(names)}`
+    : 'Every selected day'
+}
+
+function localDateValue(date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-')
+}
+
 function scheduleLabels(medication) {
   const schedule = { type: 'daily', intervalHours: 12, intervalDays: 7, weekdays: [], ...medication.schedule }
   let frequency
   if (schedule.type === 'interval') frequency = `Every ${schedule.intervalHours} hours`
   else if (schedule.type === 'day-interval') frequency = `Every ${schedule.intervalDays} days at ${formatTime(medication.times[0])}`
   else if (schedule.type === 'weekly') {
-    const frequency = schedule.weekdays.length > 1 ? `${schedule.weekdays.length}× weekly` : 'Weekly'
+    const frequency = weeklyFrequency(schedule.weekdays)
     const labels = [`${frequency} at ${formatTime(medication.times[0])}`]
     if (schedule.startDate) labels.push(`Starts ${formatLocalDate(schedule.startDate)}`)
     return labels
@@ -168,7 +186,7 @@ function frequencyLabel(medication) {
   const schedule = { type: 'daily', intervalHours: 12, intervalDays: 7, weekdays: [], ...medication.schedule }
   if (schedule.type === 'interval') return `Every ${schedule.intervalHours}h`
   if (schedule.type === 'day-interval') return `Every ${schedule.intervalDays} days`
-  if (schedule.type === 'weekly') return schedule.weekdays.length === 1 ? 'Weekly' : `${schedule.weekdays.length}× weekly`
+  if (schedule.type === 'weekly') return weeklyFrequency(schedule.weekdays)
   return 'Daily'
 }
 
@@ -1250,7 +1268,13 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
         </section>}
         {medication.notes && <section className="detail-instructions"><span>Instructions</span><p>{medication.notes}</p></section>}
         {permissions.canViewHistory && <section className="medication-calendar">
-          <div className="calendar-heading"><span className="eyebrow">Dose history</span><small>Scroll for past and future months</small></div>
+          <div className="calendar-heading">
+            <span className="eyebrow">Dose history</span>
+            <span className="calendar-guidance">
+              <small>Current day is bolded.</small>
+              <small>Scroll for past and future months</small>
+            </span>
+          </div>
           <div className="calendar-scroll" ref={calendarScrollRef} onScroll={loadCalendarAtEdge}>
             {calendarMonths.map((month) => (
               <div className="calendar-month" data-month={month.key} key={month.key}>
@@ -1261,8 +1285,9 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
                   {month.days.map((date) => {
                     const selected = selectedDate?.dateKey === date.dateKey
                     const future = isFutureLocalDate(date.dateKey, now)
-                    const label = `${month.label} ${date.day}${date.count ? `, taken ${date.count} ${date.count === 1 ? 'time' : 'times'}` : ''}${date.missedCount ? `, missed ${date.missedCount}` : ''}`
-                    return <div className={`calendar-day ${date.count ? 'taken' : ''} ${date.missedCount ? 'missed' : ''}`} key={date.day}>
+                    const current = date.dateKey === localDateValue(now)
+                    const label = `${month.label} ${date.day}${current ? ', current day' : ''}${date.count ? `, taken ${date.count} ${date.count === 1 ? 'time' : 'times'}` : ''}${date.missedCount ? `, missed ${date.missedCount}` : ''}`
+                    return <div className={`calendar-day ${current ? 'current' : ''} ${date.count ? 'taken' : ''} ${date.missedCount ? 'missed' : ''}`} key={date.day}>
                       <button type="button" aria-label={label} aria-expanded={permissions.canEdit ? selected : undefined}
                         disabled={future || !permissions.canEdit}
                         onClick={() => selectHistoryDate(date, month.label)}>{date.day}</button>

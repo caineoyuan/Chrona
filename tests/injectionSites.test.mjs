@@ -98,6 +98,7 @@ test('marks doses green only within ten minutes before or after their schedule',
 test('formats next-dose countdowns in days after 24 hours', () => {
   const now = new Date('2026-08-06T09:00:00')
   assert.equal(formatRelative(new Date('2026-08-07T09:00:00'), now), '1 day')
+  assert.equal(formatRelative(new Date('2026-08-08T14:00:00'), now), '2 days 5 hours')
   assert.equal(formatRelative(new Date('2026-08-07T10:00:00'), now), '1 day 1 hour')
   assert.equal(formatRelative(new Date('2026-08-08T11:00:00'), now), '2 days 2 hours')
 })
