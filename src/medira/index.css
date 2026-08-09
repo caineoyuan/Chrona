@@ -351,6 +351,9 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 ) {
   font-size: var(--font-sm);
 }
+.med-grid .med-card .card-title {
+  font-size: var(--font-lg);
+}
 
 .bottom-nav { position: fixed !important; z-index: 15; right: auto; bottom: 0; left: 50%; transform: translate3d(-50%,0,0); display: grid; grid-template-columns: repeat(2, 1fr); width: min(430px, calc(100% - 24px)); padding: 8px 8px max(8px, env(safe-area-inset-bottom)); background: rgba(30,30,30,.96); backdrop-filter: blur(10px); border: 1px solid var(--line); border-bottom: 0; border-radius: 17px 17px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,.3); backface-visibility: hidden; will-change: transform; }
 .bottom-nav button { display: flex; flex-direction: column; align-items: center; gap: 2px; background: none; border: 0; color: var(--muted); padding: 8px; font-size: var(--font-xs); border-radius: 11px; }

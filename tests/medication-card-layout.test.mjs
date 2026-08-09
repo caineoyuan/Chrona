@@ -32,6 +32,6 @@ test('medication list cards use their full width and show concise schedule detai
     /\.med-grid \.med-card :where\([\s\S]*\.meta-pill,[\s\S]*\.notes p,[\s\S]*\.med-footer strong,[\s\S]*\.paused-badge[\s\S]*\) \{\s*font-size: var\(--font-sm\);/,
   )
   assert.doesNotMatch(css, /\.med-grid \.med-card :where\(\s*\.card-title,/)
-  assert.match(css, /\.med-card \.card-title \{[^}]*font-size: var\(--font-md\);/)
+  assert.match(css, /\.med-grid \.med-card \.card-title \{[^}]*font-size: var\(--font-lg\);/)
   assert.match(css, /\.med-grid \.med-card :where\(\.notes, \.inventory-row, \.med-footer\) \{\s*border-top: 0;/)
 })
