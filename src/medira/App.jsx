@@ -1469,8 +1469,6 @@ function App({ colorScheme = 'dark' }) {
               {medications.map((med, index) => {
                 const last = getLastTaken(med)
                 const medNext = getNextDose([med], now)
-                const takenCount = medicationTakenCount(med)
-                const addedDate = new Date(med.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
                 const lowStock = med.inventory?.remaining != null
                   && inventoryInteger(med.inventory.remaining) <= inventoryInteger(med.inventory.refillAt)
                 return <div className={`card-wrap ${index % 2 ? 'purple' : ''} ${med.paused ? 'paused' : ''}`} key={med.id}><article
@@ -1483,8 +1481,8 @@ function App({ colorScheme = 'dark' }) {
                     <SmallIconButton label={`Delete ${med.name}`} name="trash" className="danger" onClick={() => setConfirmingDelete(med)} />
                   </div></div>
                   <div className="med-name-row"><h2 className="card-title">{med.name}</h2>{med.paused && <span className="paused-badge">Paused</span>}</div><p className="dose-label">{med.dose || 'Dose not specified'}</p>
-                  <div className="meta-row">{scheduleLabels(med).map((label) => <span className="meta-pill" key={label}>{label}</span>)}{med.trackInjectionSite && <span className="meta-pill injection">Injection</span>}</div>
-                  {med.notes && <div className="notes"><span>How to take</span><p>{med.notes}</p></div>}
+                  <div className="meta-row"><span className="meta-pill">{frequencyLabel(med)}</span>{med.trackInjectionSite && <span className="meta-pill injection">Injection</span>}</div>
+                  {med.notes && <div className="notes"><p>{med.notes}</p></div>}
                   <div className={`inventory-row ${lowStock ? 'low' : ''}`}>
                     <span>Inventory<strong>{med.inventory?.remaining == null ? 'Not tracked' : `${inventoryInteger(med.inventory.remaining)} ${med.inventory.unit}`}</strong></span>
                     <div className="inventory-controls" onClick={(event) => event.stopPropagation()}>
@@ -1492,7 +1490,7 @@ function App({ colorScheme = 'dark' }) {
                       <SmallIconButton label={`Increase ${med.name} inventory`} name="chevron-up" className="inventory-adjust" onClick={() => adjustInventory(med, 1)} />
                     </div>
                   </div>
-                  <div className="med-footer"><span>Last taken<strong>{last ? formatDateTime(last.takenAt) : 'Not taken'}</strong></span><span>Next dose<strong>{med.paused ? 'Paused' : medNext ? formatDateTime(medNext.scheduledAt) : '—'}</strong></span><span>Doses taken<strong>{takenCount} since {addedDate}</strong></span></div>
+                  <div className="med-footer"><span>Last taken<strong>{last ? formatDateTime(last.takenAt) : 'Not taken'}</strong></span><span>Next dose<strong>{med.paused ? 'Paused' : medNext ? formatDateTime(medNext.scheduledAt) : '—'}</strong></span><span>Frequency<strong>{scheduleLabels(med)[0]}</strong></span></div>
                 </article></div>
               })}
             </div>
