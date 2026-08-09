@@ -26,4 +26,8 @@ test('medication list cards use their full width and show concise schedule detai
     css,
     /\.med-grid \.notes, \.med-grid \.inventory-row, \.med-grid \.med-footer \{[^}]*grid-column: 2;[^}]*width: 100%;/,
   )
+  assert.match(
+    css,
+    /\.med-grid \.med-card :where\([\s\S]*\.card-title,[\s\S]*\.meta-pill,[\s\S]*\.notes p,[\s\S]*\.med-footer strong,[\s\S]*\.paused-badge[\s\S]*\) \{\s*font-size: var\(--font-sm\);/,
+  )
 })
