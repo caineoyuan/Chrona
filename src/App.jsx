@@ -10,6 +10,10 @@ import SetEditor from './components/SetEditor.jsx'
 import RunView from './components/RunView.jsx'
 import Login from './components/Login.jsx'
 import Profile from './components/Profile.jsx'
+import Avatar from './components/Avatar.jsx'
+import InvitationInbox from './components/InvitationInbox.jsx'
+import { useActivity } from './activity.js'
+import { sharingEnabled } from './feature-flags.js'
 
 const MediraApp = lazy(() => import('./medira/App.jsx'))
 const WORKSPACE_STORAGE_KEY = 'chrona-last-workspace'
@@ -118,6 +122,8 @@ export default function App() {
 }
 
 function Workspace({ theme }) {
+  const { user } = useAuth()
+  const activity = useActivity(sharingEnabled)
   const [sets, setSets, loaded] = useSets()
   const [appMode, setAppMode] = useState(loadWorkspace)
   // Re-render after the 12:30 AM streak deadline (and on refocus) so date-based
@@ -219,6 +225,22 @@ function Workspace({ theme }) {
   return (
     <div className={`app workspace-${appMode}`}>
       <header className="topbar">
+        <div
+          className="profile-menu"
+        >
+          <button
+            className="profile-trigger"
+            onClick={() => setProfileOpen((open) => !open)}
+            title="Edit profile"
+            aria-label="Edit profile"
+            aria-expanded={profileOpen}
+            aria-haspopup="dialog"
+          >
+            <Avatar user={user} size="topbar" />
+          </button>
+        </div>
+        {profileOpen && <Profile onClose={() => setProfileOpen(false)}
+          themePreference={theme.preference} onThemeChange={theme.setPreference} />}
         <button className="brand" onClick={() => { setAppMode('chrona'); go({ name: 'home' }, 'back') }}>
           <span key={appMode} className={`brand-content slide-${appMode === 'medira' ? 'left' : 'right'}`}>
             {appMode === 'medira'
@@ -239,18 +261,8 @@ function Workspace({ theme }) {
             <img src="/medication-icon.png" alt="" aria-hidden="true" />
           </button>
         </div>
-        <button
-          className="icon-btn profile-btn"
-          onClick={() => setProfileOpen(true)}
-          title="Profile"
-          aria-label="Profile"
-        >
-          <Icon name="gear" size={24} />
-        </button>
+        {sharingEnabled && <InvitationInbox activity={activity} />}
       </header>
-
-      {profileOpen && <Profile onClose={() => setProfileOpen(false)}
-        themePreference={theme.preference} onThemeChange={theme.setPreference} />}
 
       <main className="content">
         {appMode === 'chrona' ? (

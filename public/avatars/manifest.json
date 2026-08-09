@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "basePath": "/avatars/",
+  "license": {
+    "spdx": "CC0-1.0",
+    "name": "CC0 1.0 Universal",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+  },
+  "avatars": [
+    {
+      "id": "tiger",
+      "label": "Tiger",
+      "file": "tiger.svg",
+      "alt": "Friendly orange tiger",
+      "viewBox": "0 0 64 64",
+      "accent": "#ffab00",
+      "sha256": "64ee0b9fc2efd0bfa1962e9b95267388d3a6c30320399aedb8a900f3737f6529",
+      "source": {
+        "name": "Animal Carnivore Cartoon 6",
+        "url": "https://www.svgrepo.com/svg/416534/animal-carnivore-cartoon-6",
+        "originalSha256": "d2769d7628e6df9babed6b5ac2046ca74e01c5b3634c87ae0949a1465f27e89a"
+      }
+    },
+    {
+      "id": "giraffe",
+      "label": "Giraffe",
+      "file": "giraffe.svg",
+      "alt": "Friendly golden giraffe",
+      "viewBox": "0 0 64 64",
+      "accent": "#ffab00",
+      "sha256": "4aea6bdf6f9a7b44042df4177b6f28feb031ff3e45685492ea326e3cef43d064",
+      "source": {
+        "name": "Animal Cartoon Fauna 3",
+        "url": "https://www.svgrepo.com/svg/416539/animal-cartoon-fauna-3",
+        "originalSha256": "87a5d927ade284f95cf51bb37e461e229ad293bda61ad66c2de31f1bec471486"
+      }
+    },
+    {
+      "id": "goat",
+      "label": "Goat",
+      "file": "goat.svg",
+      "alt": "Friendly gray goat",
+      "viewBox": "0 0 64 64",
+      "accent": "#aeadb3",
+      "sha256": "3782c91f7782dcffef329c2ede43688d3e5d623347859efa7619e738578c6219",
+      "source": {
+        "name": "Animal Cartoon Farm",
+        "url": "https://www.svgrepo.com/svg/416535/animal-cartoon-farm",
+        "originalSha256": "036f3dac0813cfe28e949a90899c03a8bbe4ca1ef6ae731b9fbb5e066a90b4a2"
+      }
+    }
+  ]
+}

@@ -1,4 +1,10 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import {
+  clearPendingInviteToken,
+  pendingInviteToken,
+  retainInviteToken,
+} from './invitations.js'
+import { sharingEnabled } from './feature-flags.js'
 
 const AuthContext = createContext(null)
 
@@ -21,13 +27,23 @@ async function api(path, options = {}) {
   }
   if (!res.ok) {
     const message = data?.error || 'Something went wrong. Please try again.'
-    throw new Error(message)
+    const error = new Error(message)
+    error.status = res.status
+    error.data = data
+    throw error
   }
   return data
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(isLocalPreview ? { username: 'Preview' } : null)
+  const [inviteToken, setInviteToken] = useState(
+    () => isLocalPreview || !sharingEnabled ? null : retainInviteToken(),
+  )
+  const [user, setUser] = useState(
+    isLocalPreview
+      ? { username: 'Preview', displayUsername: 'Preview', timezone: 'UTC' }
+      : null,
+  )
   const [loading, setLoading] = useState(!isLocalPreview)
 
   useEffect(() => {
@@ -48,6 +64,22 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  useEffect(() => {
+    if (!user || isLocalPreview || !sharingEnabled) return
+    const token = inviteToken || pendingInviteToken()
+    if (!token) return
+    api('/api/sharing/invitations/accept', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    })
+      .then(() => {
+        clearPendingInviteToken()
+        setInviteToken(null)
+        window.dispatchEvent(new CustomEvent('chrona:invite-accepted'))
+      })
+      .catch((error) => console.error('Could not accept invitation:', error))
+  }, [inviteToken, user])
+
   const login = useCallback(async (username, password, remember) => {
     const data = await api('/api/auth/login', {
       method: 'POST',
@@ -58,9 +90,10 @@ export function AuthProvider({ children }) {
   }, [])
 
   const register = useCallback(async (payload) => {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
     const data = await api('/api/auth/register', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, timezone }),
     })
     setUser(data)
     return data
@@ -78,9 +111,76 @@ export function AuthProvider({ children }) {
     })
   }, [])
 
+  const updateTimezone = useCallback(async (timezone) => {
+    const data = await api('/api/auth/profile/timezone', {
+      method: 'PUT',
+      body: JSON.stringify({ timezone }),
+    })
+    setUser(data)
+    return data
+  }, [])
+
+  const updateUsername = useCallback(async (username) => {
+    const data = await api('/api/auth/profile/username', {
+      method: 'PUT',
+      body: JSON.stringify({ username }),
+    })
+    setUser(data)
+    return data
+  }, [])
+
+  const updateAvatarChoice = useCallback(async (avatar) => {
+    const data = await api('/api/profile', {
+      method: 'PATCH',
+      body: JSON.stringify({ avatar }),
+    })
+    setUser(data)
+    return data
+  }, [])
+
+  const uploadAvatar = useCallback(async (blob) => {
+    const response = await fetch('/api/profile/avatar', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': blob.type || 'image/png' },
+      body: blob,
+    })
+    const data = await response.json().catch(() => null)
+    if (!response.ok) {
+      throw new Error(data?.error || 'Could not upload profile image.')
+    }
+    const next = {
+      ...data,
+      avatar: {
+        ...data.avatar,
+        url: `${data.avatar.url}?v=${Date.now()}`,
+      },
+    }
+    setUser(next)
+    return next
+  }, [])
+
+  const resetAvatar = useCallback(async () => {
+    const data = await api('/api/profile/avatar', { method: 'DELETE' })
+    setUser(data)
+    return data
+  }, [])
+
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, register, logout, changePassword }}
+      value={{
+        user,
+        loading,
+        login,
+        register,
+        logout,
+        changePassword,
+        updateUsername,
+        updateTimezone,
+        updateAvatarChoice,
+        uploadAvatar,
+        resetAvatar,
+      }}
     >
       {children}
     </AuthContext.Provider>
