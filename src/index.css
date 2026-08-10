@@ -379,10 +379,15 @@ html[data-theme='light'] .group-invites-head-shading {
   width: 18px;
   height: 18px;
   place-items: center;
-  color: #fff;
-  background: var(--settings-blue);
+  color: #deded9;
+  background: #4a4d4e;
+  border: 0;
   border-radius: 50%;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+html[data-theme='light'] .profile-avatar-pencil {
+  color: #5f5e5a;
+  background: #deded9;
 }
 .invitation-action.accept {
   background: var(--accent-2);
@@ -472,6 +477,423 @@ html[data-theme='light'] .group-invites-head-shading {
 }
 .home-section {
   margin-top: 22px;
+}
+.sharing-home {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+.sharing-home-head,
+.sharing-sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.sharing-home-head {
+  margin-bottom: 16px;
+}
+.sharing-home-head .section-title {
+  margin-bottom: 0;
+  color: var(--text);
+}
+.sharing-home-head > div:last-child {
+  display: flex;
+  gap: 8px;
+}
+.eyebrow {
+  color: var(--muted);
+  font-size: var(--font-xs);
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+}
+.activity-trigger {
+  position: relative;
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+.activity-trigger > span {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: flex;
+  min-width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  color: #fff;
+  background: var(--danger);
+  border: 2px solid var(--bg);
+  border-radius: 999px;
+  font-size: var(--font-xs);
+  font-style: normal;
+}
+.buddy-card-wrap {
+  background: var(--purple);
+}
+.buddy-card-wrap.complete {
+  background: var(--accent-2);
+}
+.workspace-chrona .buddy-card-wrap > .buddy-card {
+  min-height: 0;
+  cursor: default;
+}
+.buddy-card:hover {
+  transform: none;
+  border-color: var(--line);
+}
+.buddy-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.buddy-meta span {
+  padding: 0 8px;
+  color: var(--muted);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: var(--font-xs);
+  line-height: 22px;
+}
+.buddy-meta .success {
+  color: var(--accent-2);
+}
+.buddy-member-status {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+.buddy-status-row,
+.buddy-member-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+}
+.buddy-status-row > span:nth-child(2),
+.buddy-member-row > span {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.buddy-status-row strong,
+.buddy-member-row strong {
+  overflow: hidden;
+  font-size: var(--font-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.buddy-status-row small,
+.buddy-member-row small,
+.buddy-role-picker small,
+.activity-row small,
+.promote-list p {
+  color: var(--muted);
+  font-size: var(--font-xs);
+}
+.buddy-state-mark {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+.buddy-state-mark.done {
+  color: var(--accent-2);
+  border-color: var(--accent-2);
+}
+.ping-action {
+  display: inline-flex;
+  min-height: 40px;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-size: var(--font-xs);
+}
+.ping-feedback {
+  width: 100%;
+  color: var(--gold) !important;
+  text-align: right;
+}
+.observer-note {
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: var(--font-sm);
+}
+.buddy-complete-action {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 8px 16px;
+  color: #fff;
+  background: var(--accent-2);
+  border: 1px solid var(--accent-2);
+  border-radius: 12px;
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+.buddy-complete-action.undo {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+.sharing-overlay {
+  z-index: 60;
+}
+.sharing-sheet {
+  width: min(520px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow-x: clip;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+.sharing-sheet-head {
+  position: sticky;
+  top: -24px;
+  z-index: 2;
+  margin: -24px -24px 16px;
+  padding: 24px;
+  background: linear-gradient(160deg, var(--card), var(--card-2));
+  border-bottom: 1px solid var(--line);
+}
+.sharing-sheet-head .modal-title {
+  margin: 2px 0 0;
+}
+.sharing-feedback {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 8px 16px;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  font-size: var(--font-sm);
+}
+.sharing-feedback.error {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.sharing-feedback button {
+  padding: 8px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+}
+.sharing-empty {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: var(--font-sm);
+}
+.buddy-role-picker {
+  margin: 0;
+  padding: 16px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+}
+.buddy-role-picker legend {
+  padding: 0 8px;
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+.buddy-role-picker > div {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.buddy-role-picker button,
+.primary-text-action,
+.secondary-text-action,
+.danger-text-action,
+.text-action {
+  min-height: 40px;
+  padding: 8px 16px;
+  border-radius: 12px;
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+.buddy-role-picker button,
+.secondary-text-action,
+.text-action {
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+}
+.buddy-role-picker button.active,
+.primary-text-action {
+  color: #fff;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+}
+.danger-text-action {
+  color: #fff;
+  background: var(--danger);
+  border: 1px solid var(--danger);
+}
+.text-action {
+  margin-bottom: 16px;
+}
+.buddy-role-picker small {
+  display: block;
+  margin-top: 8px;
+}
+.buddy-invite-form,
+.buddy-create-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 24px;
+}
+.buddy-invite-form label,
+.buddy-create-form label {
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+.buddy-invite-form > div,
+.buddy-inline-field,
+.generated-buddy-link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+.buddy-invite-form input,
+.buddy-create-form input,
+.generated-buddy-link input {
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 16px;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: var(--font-sm) var(--sans);
+}
+.buddy-link-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+.buddy-members,
+.promote-list {
+  margin-top: 24px;
+}
+.buddy-members h3,
+.promote-list h3 {
+  margin: 0 0 8px;
+  font-family: var(--serif);
+  font-size: var(--font-md);
+  font-style: italic;
+  font-weight: 400;
+}
+.buddy-member-row {
+  margin-bottom: 8px;
+}
+.inline-confirm {
+  position: sticky;
+  bottom: -24px;
+  display: grid;
+  gap: 8px;
+  margin: 16px -24px -24px;
+  padding: 16px 24px 24px;
+  background: var(--card);
+  border-top: 1px solid var(--danger);
+}
+.inline-confirm > span {
+  color: var(--muted);
+  font-size: var(--font-sm);
+}
+.inline-confirm > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.activity-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+  padding: 16px;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  text-align: left;
+}
+.activity-row.unread {
+  border-left: 4px solid var(--accent);
+}
+.activity-row > div,
+.activity-row > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+.activity-button > i {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  background: var(--accent);
+  border-radius: 50%;
+}
+.promote-row {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  font-size: var(--font-sm);
+  text-align: left;
+}
+html[data-theme='light'] .workspace-chrona .buddy-role-picker button.active,
+html[data-theme='light'] .workspace-chrona .primary-text-action {
+  color: #f0f0ed;
+}
+@media (max-width: 420px) {
+  .sharing-sheet {
+    width: 100%;
+  }
+  .buddy-invite-form > div {
+    grid-template-columns: 1fr;
+  }
+  .buddy-status-row {
+    flex-wrap: wrap;
+  }
+  .ping-action {
+    margin-left: 40px;
+  }
 }
 .todo-section {
   margin-top: 16px;
@@ -624,6 +1046,7 @@ html[data-theme='light'] .workspace-chrona .swipe-act.danger {
 }
 .workspace-chrona .card-wrap > .card {
   min-height: 152px;
+  touch-action: pan-y;
 }
 .card:hover {
   transform: translateY(-2px);
@@ -668,17 +1091,6 @@ html[data-theme='light'] .workspace-chrona .swipe-act.danger {
   color: var(--text);
 }
 
-.meta-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  color: var(--muted);
-  font-size: var(--font-xs);
-  padding: 8px;
-  border-radius: 999px;
-}
 .i8,
 .gi {
   display: inline-block;
@@ -831,6 +1243,7 @@ html[data-theme='light'] .workspace-chrona .fire-frozen circle {
   color: #fff;
 }
 .icon-btn {
+  --icon-button-background: var(--bg-2);
   background: var(--bg-2);
   border: 1px solid var(--line);
   color: var(--text);

@@ -96,6 +96,8 @@ test('settings modal expands profile icon editing with canonical round actions',
   assert.match(css, /\.profile-modal \{[^}]*width: min\(560px, 100%\);[^}]*max-width: 560px;/)
   assert.match(css, /\.profile-form::-webkit-scrollbar \{\s*width: 4px;/)
   assert.match(css, /\.profile-avatar-pencil \{[^}]*right: -1px;[^}]*bottom: -1px;/)
+  assert.match(css, /\.profile-avatar-pencil \{[^}]*color: #deded9;[^}]*background: #4a4d4e;[^}]*border: 0;/)
+  assert.match(css, /html\[data-theme='light'\] \.profile-avatar-pencil \{[^}]*color: #5f5e5a;[^}]*background: #deded9;/)
   assert.match(css, /\.profile-avatar-edit-trigger \{[^}]*border-radius: 50%;/)
   assert.doesNotMatch(profile, /onDoubleClick|onDoubleTap/)
   assert.match(app, /appMode === 'chrona'/)
