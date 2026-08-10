@@ -251,5 +251,6 @@ test('profile timezone API validates and persists an IANA timezone', async () =>
   assert.equal(valid.status, 200)
   assert.equal((await valid.json()).timezone, 'Asia/Tokyo')
   assert.match(calls[0].text, /UPDATE users SET timezone/)
+  assert.match(calls[0].text, /UPDATE buddy_streak_members/)
   assert.deepEqual(calls[0].params, ['Asia/Tokyo', 5])
 })

@@ -69,9 +69,10 @@ test('scoped medication client manages members with optimistic versions', async 
 })
 
 test('Medira sharing modal preserves mobile scrolling and accessible controls', async () => {
-  const [source, css] = await Promise.all([
+  const [source, css, controlsCss] = await Promise.all([
     readFile(new URL('../src/medira/App.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../src/medira/index.css', import.meta.url), 'utf8'),
+    readFile(new URL('../src/components/paper-buttons.css', import.meta.url), 'utf8'),
   ])
   assert.match(source, /aria-pressed=\{role === value\}/)
   assert.match(source, /role="radiogroup"/)
@@ -100,11 +101,11 @@ test('Medira sharing modal preserves mobile scrolling and accessible controls', 
   assert.match(css, /--card: #eeeeea;\s*--card-2: #e7e7e2;/)
   assert.match(css, /\.medira-shell\.light \.action-glyph \[data-part='plus'\] \{[^}]*fill: #777773;/)
   assert.match(source, /permissions\.canViewSchedule \? scheduleLabels\(med\)\[0\] : 'Not shared'/)
-  assert.match(source, /<button className=\{`taken-toggle \$\{readOnlyToggleClass\}`\}/)
+  assert.match(source, /<CheckCircleButton className=\{readOnlyToggleClass\}/)
   assert.match(source, /<span className="read-only-label">Read only<\/span>/)
-  assert.match(css, /\.taken-toggle \{[^}]*color: var\(--muted\);[^}]*border: 2px solid var\(--button-neutral-border\);/)
-  assert.match(css, /\.taken-toggle\.complete \{[^}]*background: var\(--accent-2\);[^}]*border: 0;[^}]*outline: none;/)
-  assert.match(css, /\.taken-toggle\.overdue \{[^}]*color: var\(--muted\);[^}]*border-color: var\(--button-neutral-border\);/)
+  assert.match(controlsCss, /\.taken-toggle \{[^}]*color: var\(--muted\);[^}]*border: 2px solid var\(--button-neutral-border, var\(--line\)\);/)
+  assert.match(controlsCss, /\.taken-toggle\.complete \{[^}]*background: var\(--accent-2\);[^}]*border: 0;[^}]*outline: none;/)
+  assert.match(controlsCss, /\.taken-toggle\.overdue \{[^}]*color: var\(--muted\);[^}]*border-color: var\(--button-neutral-border, var\(--line\)\);/)
   assert.match(source, /role="menuitemradio"/)
   assert.match(source, /Share medication list/)
   assert.doesNotMatch(source, /Share \$\{med\.name\}|Share medication"/)

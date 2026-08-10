@@ -64,12 +64,16 @@ if (!process.env.DATABASE_URL) {
         SELECT
           to_regclass('public.share_invites') IS NOT NULL
             AND to_regclass('public.share_invite_acceptances') IS NOT NULL
+            AND to_regclass('public.buddy_streaks') IS NOT NULL
+            AND to_regclass('public.buddy_streak_members') IS NOT NULL
+            AND to_regclass('public.buddy_streak_completions') IS NOT NULL
             AND to_regclass('public.medications') IS NOT NULL
             AND to_regclass('public.medication_shares') IS NOT NULL
             AND to_regclass('public.medication_dose_events') IS NOT NULL
             AND to_regclass('public.collaboration_events') IS NOT NULL
             AND to_regclass('public.medication_lists') IS NOT NULL
             AND to_regclass('public.medication_list_shares') IS NOT NULL
+            AND to_regclass('public.ping_rate_limits') IS NOT NULL
             AS complete
       `)
       ready = !drift && pending.length === 0 && schema.rows[0].complete

@@ -290,13 +290,6 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .dose-info span { color: var(--muted); font-size: var(--font-xs); margin-top: 3px; }
 .dose-info em { color: var(--purple); font-style: normal; }
 .dose-info span.skipped-at { color: var(--accent-ink); font-size: var(--font-xs); font-weight: 600; }
-.taken-toggle { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; color: var(--muted); background: transparent; border: 2px solid var(--button-neutral-border); border-radius: 50%; transition: transform .12s ease, filter .12s ease; }
-.taken-toggle.complete { color: white; background: var(--accent-2); border: 0; outline: none; box-shadow: none; }
-.taken-toggle:hover:not(:disabled) { transform: scale(1.06); filter: brightness(1.08); }
-.taken-toggle:active { transform: scale(.96); }
-.taken-toggle:disabled { cursor: default; }
-.taken-toggle.overdue { color: var(--muted); background: transparent; border-color: var(--button-neutral-border); }
-.taken-toggle.skipped { color: var(--accent-ink); background: transparent; border-color: var(--accent); }
 .empty { text-align: center; }
 .empty .card { padding: 40px 24px; }
 .empty-icon { margin: auto; display: grid; place-items: center; width: 60px; height: 60px; border-radius: 50%; background: rgba(1,238,184,.12); color: var(--accent-ink); }
@@ -309,6 +302,46 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .med-grid { display: grid; grid-template-columns: 1fr; gap: 17px; }
 .med-card { padding: 16px; }
 .med-grid .med-card { display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 8px; align-items: start; padding-block: 16px 24px; }
+.medication-card-wrap > .med-card {
+  touch-action: pan-y;
+  transition: transform .12s ease, border-color .12s ease;
+}
+.med-card-actions {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  right: 0;
+  bottom: 4px;
+  display: flex;
+  width: 56px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: transparent;
+}
+.medira-shell.dark .med-card-actions .swipe-act,
+.medira-shell.dark .med-card-actions .swipe-act.danger {
+  background: rgba(0, 0, 0, .3);
+}
+.medira-shell.light .med-card-actions .swipe-act,
+.medira-shell.light .med-card-actions .swipe-act.danger {
+  color: #fff;
+  background: rgba(255, 255, 255, .18);
+  border: 0;
+}
+.medira-shell.light .med-card-actions .action-glyph {
+  color: #fff;
+}
+.medira-shell.light .med-card-actions .action-glyph [data-part='person'],
+.medira-shell.light .med-card-actions .action-glyph [data-part='plus'] {
+  opacity: 1;
+  fill: #fff;
+}
+.medira-shell.light .med-card-actions .action-glyph [data-part='plus-circle'] {
+  opacity: .4;
+  fill: #fff;
+}
 .med-grid .med-card-head { grid-column: 1; grid-row: 1; align-self: start; }
 .med-grid .med-card-head .medication-actions { position: absolute; top: 14px; right: 14px; }
 .med-grid .med-name-row, .med-grid .dose-label, .med-grid .meta-row, .med-grid .permission-summary,

@@ -4,6 +4,10 @@ import cron from 'node-cron'
 import { query } from './db.js'
 import { requireAuth } from './auth.js'
 import { isScheduled, dateKey } from '../src/lib.js'
+import {
+  dispatchCollaborationPushes,
+  queueAutomaticBuddyReminders,
+} from './collaboration-notifications.js'
 
 const PUBLIC = process.env.VAPID_PUBLIC_KEY
 const PRIVATE = process.env.VAPID_PRIVATE_KEY
@@ -129,6 +133,11 @@ async function send(sub, set, when) {
 }
 
 async function tick() {
+  try {
+    await runCollaborationNotificationTick()
+  } catch (error) {
+    console.error('collaboration push tick', error)
+  }
   if (!configured) return
   const subs = (await query('SELECT endpoint, user_id, subscription, tz, reminders FROM push_subscriptions')).rows
   for (const sub of subs) {
@@ -179,8 +188,20 @@ async function tick() {
 }
 
 export function startPushCron() {
-  if (!configured) return
   cron.schedule('* * * * *', () => tick().catch((e) => console.error('push tick', e)))
+}
+
+export async function runCollaborationNotificationTick({
+  queryFn = query,
+  pushEnabled = configured,
+  queueReminders = queueAutomaticBuddyReminders,
+  dispatchPushes = dispatchCollaborationPushes,
+  sendNotification = (subscription, payload) =>
+    webpush.sendNotification(asObj(subscription), payload),
+} = {}) {
+  await queueReminders(queryFn)
+  if (!pushEnabled) return
+  await dispatchPushes({ queryFn, sendNotification })
 }
 
 export default router

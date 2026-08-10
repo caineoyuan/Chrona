@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { buddyStreakClient } from '../src/buddy-streak-client.js'
 import {
   medicationHistoryForResource,
   medicationResourceClient,
@@ -74,4 +75,24 @@ test('shared medication history is not fetched without explicit permission', asy
 
   assert.equal(historyRequests, 0)
   assert.deepEqual(history, [])
+})
+
+test('buddy client propagates 409 conflicts for hooks to refetch', async () => {
+  const conflict = Object.assign(new Error('changed'), {
+    status: 409,
+    data: { currentVersion: 6 },
+  })
+  const client = buddyStreakClient(async (path, options) => {
+    assert.equal(path, '/api/buddy-streaks/12')
+    assert.deepEqual(JSON.parse(options.body), {
+      version: 5,
+      definition: { name: 'Daily' },
+    })
+    throw conflict
+  })
+
+  await assert.rejects(
+    client.update('12', 5, { name: 'Daily' }),
+    (error) => error.status === 409 && error.data.currentVersion === 6,
+  )
 })

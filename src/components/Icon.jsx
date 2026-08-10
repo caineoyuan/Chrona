@@ -3,6 +3,7 @@
 
 const ICONS = {
   timer: { img: '/timer-shutter.png' },
+  stone: { img: '/stone-icon.svg' },
   link: {
     vb: '0 0 24 24',
     el: (

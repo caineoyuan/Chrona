@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Icon from './Icon.jsx'
+import Avatar from './Avatar.jsx'
+import { IconButton } from './PaperButton.jsx'
 import {
   clock,
   formatDuration,
@@ -10,6 +12,7 @@ import {
   dateKey,
   todayKey,
   lastScheduledDates,
+  normalizeSchedule,
   parseNotes,
 } from '../lib.js'
 import { ensurePermission } from '../notify.js'
@@ -183,11 +186,23 @@ function StepNotes({ notes, active, paused, done }) {
   )
 }
 
-export default function RunView({ set, onUpdate, onEdit, onBack }) {
+export default function RunView({
+  set,
+  buddyStreak,
+  user,
+  onUpdate,
+  onEdit,
+  onShare,
+  onNudge,
+  onDelete,
+  onBack,
+}) {
   const steps = set.steps
+  const readOnly = buddyStreak?.requestingRole === 'observer'
   const hasTimers = steps.some((s) => !s.noTime)
   const swipe = useRef(null)
   const [dragX, setDragX] = useState(0)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const onNavStart = (e) => {
     const t = e.touches[0]
     swipe.current = { x: t.clientX, y: t.clientY, ok: false }
@@ -578,6 +593,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
   }
 
   const streak = computeStreak(set)
+  const streakUnit = normalizeSchedule(set).mode === 'weekly' ? 'week' : 'day'
   const startActive =
     phase === 'running' ||
     phase === 'paused' ||
@@ -624,29 +640,66 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
     >
       <div className="run-fixed">
         <div className="run-head">
-          <button className="icon-btn" onClick={onBack} title="Back" aria-label="Back">
-            <Icon name="arrow-left" size={22} />
-          </button>
-          <button className="icon-btn" onClick={onEdit} title="Edit set" aria-label="Edit set">
-            <Icon name="edit" size={18} />
-          </button>
+          <IconButton label="Back" name="arrow-left" iconSize={22}
+            iconClassName="run-back-glyph" onClick={onBack} />
+          <div className="run-head-actions">
+            {(!buddyStreak || buddyStreak.canAdminister) &&
+              <IconButton label="Share and manage people" name="user-add" iconSize={18}
+                iconClassName="action-glyph" onClick={onShare} />}
+            {(!buddyStreak || buddyStreak.requestingRole === 'participant') &&
+              <IconButton label="Edit set" name="edit" iconSize={18}
+                iconClassName="action-glyph" onClick={onEdit} />}
+            <IconButton label={buddyStreak ? 'Leave buddy streak' : 'Delete set'}
+              name="trash" iconSize={18} className="danger"
+              iconClassName="action-glyph" onClick={() => setConfirmDelete(true)} />
+          </div>
         </div>
 
         <h1 className="run-title">{set.name || 'Untitled'}</h1>
+        {buddyStreak && <div className="run-shared-people"
+          aria-label="People sharing this streak">
+          {buddyStreak.members.filter((member) => !member.removedAt).map((member) => {
+            const participant = member.role === 'participant'
+            const completed = buddyStreak.currentOccurrence
+              ?.completedParticipantIds?.includes(member.userId)
+            const self = member.userId === String(user.id)
+            const content = <>
+              <span className="run-person-avatar">
+                <Avatar user={member} size="medium" />
+                {participant && <span className={`run-person-state ${completed ? 'done' : 'waiting'}`}>
+                  <Icon name={completed ? 'checkmark' : 'close'} size={12} />
+                </span>}
+              </span>
+              <strong>{self ? 'You' : member.displayUsername}</strong>
+              {!participant && <small>Spectator</small>}
+            </>
+            return self || !participant || completed
+              ? <div className="run-person" key={member.userId}
+                  title={`@${member.username}`}>{content}</div>
+              : <button className="run-person" type="button" key={member.userId}
+                  title={`Nudge @${member.username}`}
+                  aria-label={`Nudge ${member.displayUsername}`}
+                  onClick={() => onNudge(member)}>{content}</button>
+          })}
+        </div>}
         <div className="run-meta">
-          <span className="meta-tag">{formatDuration(totalSeconds(set))}</span>
-          {set.trackStreak && (
-            <span className="meta-tag">{streak} day streak</span>
-          )}
-          {set.trackStreak && (
-            <span className="meta-tag">
-              {freezesUsed} {freezesUsed === 1 ? 'freeze' : 'freezes'} used
-            </span>
-          )}
-          {set.loop && <span className="meta-tag">Loops</span>}
+          <span className="meta-tag run-total-time">{formatDuration(totalSeconds(set))}</span>
+          <div className="run-meta-stats">
+            {set.trackStreak && (
+              <span className="meta-tag run-streak-stat">{streak} {streakUnit} streak</span>
+            )}
+            {set.trackStreak && (
+              <span className="meta-tag run-streak-stat">
+                {freezesUsed} {freezesUsed === 1 ? 'freeze' : 'freezes'} used
+              </span>
+            )}
+            {set.loop && <span className="meta-tag">Loops</span>}
+          </div>
         </div>
 
-        <div className="run-controls">
+        {readOnly
+          ? <p className="spectating-note">You are spectating this streak.</p>
+          : <div className="run-controls">
           <button
             className={`complete-btn ${completedToday ? 'done' : ''}`}
             onClick={toggleCompleteToday}
@@ -655,23 +708,21 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
           >
             <Icon name="checkmark" size={24} />
           </button>
-          {set.trackStreak && (
-            <button
-              className={`freeze-btn ${freezeActive ? 'active' : ''}`}
-              onClick={handleFreeze}
-              disabled={completedToday}
-              title={
-                completedToday
-                  ? "Completed today — can't freeze"
-                  : freezeActive
-                    ? 'Freeze active — click to remove'
-                    : 'Use a freeze to protect your streak'
-              }
-              aria-label="Freeze streak"
-            >
-              <Icon name="snowflake" size={24} />
-            </button>
-          )}
+          <button
+            className={`freeze-btn ${freezeActive ? 'active' : ''}`}
+            onClick={handleFreeze}
+            disabled={completedToday}
+            title={
+              completedToday
+                ? "Completed today — can't freeze"
+                : freezeActive
+                  ? 'Freeze active — click to remove'
+                  : 'Use a freeze to protect your streak'
+            }
+            aria-label="Freeze streak"
+          >
+            <Icon name="snowflake" size={24} />
+          </button>
           <button
             className={`notify-btn ${notifyEnabled ? 'active' : ''}`}
             onClick={toggleNotify}
@@ -680,7 +731,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
           >
             <Icon name={notifyEnabled ? 'bell' : 'bell-off'} size={24} />
           </button>
-        </div>
+          </div>}
 
         {/* Start node with an overall-progress ring (stays fixed). Hidden for
             sets with only no-time steps — those are tapped to complete. */}
@@ -715,7 +766,7 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
                       ? handleReset
                       : handleStart
                 }
-                disabled={steps.length === 0}
+                disabled={steps.length === 0 || readOnly}
               >
                 {isActiveRun ? (
                   <PauseGlyph />
@@ -746,15 +797,15 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
               <ManualCircle
                 step={step}
                 status={stepStatus(i)}
-                onComplete={manualComplete}
-                onReopen={() => reopenStep(i)}
+                onComplete={readOnly ? undefined : manualComplete}
+                onReopen={readOnly ? undefined : () => reopenStep(i)}
               />
             ) : (
               <TimerCircle
                 step={{ ...step, activeRemaining: remaining }}
                 status={stepStatus(i)}
                 progress={i === index ? progress : 0}
-                onTap={handleTimerTap}
+                onTap={readOnly ? undefined : handleTimerTap}
                 paused={phase === 'paused'}
               />
             )}
@@ -774,6 +825,23 @@ export default function RunView({ set, onUpdate, onEdit, onBack }) {
           </div>
         )}
       </div>
+      {confirmDelete && <div className="modal-overlay"
+        onClick={() => setConfirmDelete(false)}>
+        <div className="modal" onClick={(event) => event.stopPropagation()}>
+          <h3 className="modal-title">
+            {buddyStreak ? 'Leave buddy streak?' : 'Delete set?'}
+          </h3>
+          <p className="modal-body">{buddyStreak
+            ? 'This removes the shared streak from your account. Other members keep access.'
+            : `“${set.name || 'Untitled'}” and its streak history will be permanently removed.`}</p>
+          <div className="modal-actions">
+            <button className="ghost-btn" onClick={() => setConfirmDelete(false)}>Cancel</button>
+            <button className="danger-btn" onClick={onDelete}>
+              {buddyStreak ? 'Leave' : 'Delete'}
+            </button>
+          </div>
+        </div>
+      </div>}
     </div>
   )
 }

@@ -1,0 +1,67 @@
+.swipe-act {
+  display: flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: #fff;
+  background: rgba(255, 255, 255, .18);
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.swipe-act.danger {
+  color: #fff;
+}
+
+.swipe-act .action-glyph [data-part='person'],
+.swipe-act .action-glyph [data-part='plus'] {
+  opacity: 1;
+  fill: #fff;
+}
+
+.swipe-act .action-glyph [data-part='plus-circle'] {
+  opacity: .4;
+  fill: #fff;
+}
+
+.taken-toggle {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 2px solid var(--button-neutral-border, var(--line));
+  border-radius: 50%;
+  transition: transform 120ms ease, filter 120ms ease;
+}
+
+.taken-toggle.complete {
+  color: #fff;
+  background: var(--accent-2);
+  border: 0;
+  outline: none;
+  box-shadow: none;
+}
+
+.taken-toggle:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: scale(1.06);
+}
+
+.taken-toggle:active { transform: scale(.96); }
+.taken-toggle:disabled { cursor: default; }
+.taken-toggle.overdue {
+  color: var(--muted);
+  background: transparent;
+  border-color: var(--button-neutral-border, var(--line));
+}
+.taken-toggle.skipped {
+  color: var(--accent-ink, var(--accent));
+  background: transparent;
+  border-color: var(--accent);
+}

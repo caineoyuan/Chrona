@@ -13,10 +13,17 @@ import Profile from './components/Profile.jsx'
 import Avatar from './components/Avatar.jsx'
 import InvitationInbox from './components/InvitationInbox.jsx'
 import { useActivity } from './activity.js'
+import { buddySetForUser, useBuddyStreaks } from './buddy-streaks.js'
 import { sharingEnabled } from './feature-flags.js'
+import {
+  BuddyShareModal,
+  NudgeModal,
+  SharingChoiceModal,
+} from './components/SharingUI.jsx'
 
 const MediraApp = lazy(() => import('./medira/App.jsx'))
 const WORKSPACE_STORAGE_KEY = 'chrona-last-workspace'
+const NAVIGATION_STORAGE_KEY = 'chrona-navigation-state'
 const LEGACY_MEDIRA_WORKSPACE = 'dosewell'
 const THEME_STORAGE_KEY = 'chrona-theme-preference'
 
@@ -30,6 +37,38 @@ function loadWorkspace() {
     return savedWorkspace === 'medira' ? 'medira' : 'chrona'
   } catch {
     return 'chrona'
+  }
+}
+
+function loadNavigation() {
+  const fallback = { appMode: loadWorkspace(), view: { name: 'home' } }
+  const buddyId = new URLSearchParams(window.location.search).get('buddyStreak')
+  if (/^\d+$/.test(buddyId || '')) {
+    return { appMode: 'chrona', view: { name: 'run', buddyId } }
+  }
+  try {
+    const saved = JSON.parse(localStorage.getItem(NAVIGATION_STORAGE_KEY))
+    const appMode = saved?.appMode === 'medira' ? 'medira' : saved?.appMode === 'chrona'
+      ? 'chrona'
+      : fallback.appMode
+    const view = saved?.view
+    if (view?.name === 'home') return { appMode, view: { name: 'home' } }
+    const hasResource = typeof view?.id === 'string' ||
+      (/^\d+$/.test(view?.buddyId || ''))
+    if (['edit', 'run'].includes(view?.name) && hasResource) {
+      return {
+        appMode,
+        view: {
+          name: view.name,
+          ...(typeof view.id === 'string' ? { id: view.id } : {}),
+          ...(view.buddyId ? { buddyId: view.buddyId } : {}),
+          ...(view.from === 'run' ? { from: 'run' } : {}),
+        },
+      }
+    }
+    return { appMode, view: fallback.view }
+  } catch {
+    return fallback
   }
 }
 
@@ -124,8 +163,10 @@ export default function App() {
 function Workspace({ theme }) {
   const { user } = useAuth()
   const activity = useActivity(sharingEnabled)
+  const buddy = useBuddyStreaks()
   const [sets, setSets, loaded] = useSets()
-  const [appMode, setAppMode] = useState(loadWorkspace)
+  const [initialNavigation] = useState(loadNavigation)
+  const [appMode, setAppMode] = useState(initialNavigation.appMode)
   // Re-render after the 12:30 AM streak deadline (and on refocus) so date-based
   // values — streaks, today's completion, freezable date — never go stale.
   useDayKey()
@@ -139,16 +180,36 @@ function Workspace({ theme }) {
   }, [loaded, sets])
   const [profileOpen, setProfileOpen] = useState(false)
   // view: { name: 'home' } | { name: 'edit', id } | { name: 'run', id }
-  const [view, setView] = useState({ name: 'home' })
+  const [view, setView] = useState(initialNavigation.view)
   const [dir, setDir] = useState('forward')
+  const [sharingTarget, setSharingTarget] = useState(null)
+  const [sharingBusy, setSharingBusy] = useState(false)
+  const [sharingError, setSharingError] = useState('')
+  const [nudgeTarget, setNudgeTarget] = useState(null)
+  const [nudgeCounts, setNudgeCounts] = useState({})
+  const [nudgeError, setNudgeError] = useState('')
+  const [nudgeBusy, setNudgeBusy] = useState(false)
 
   useEffect(() => {
     try {
       localStorage.setItem(WORKSPACE_STORAGE_KEY, appMode)
+      localStorage.setItem(
+        NAVIGATION_STORAGE_KEY,
+        JSON.stringify({ appMode, view }),
+      )
     } catch {
       // The workspace still switches normally when storage is unavailable.
     }
-  }, [appMode])
+  }, [appMode, view])
+
+  useEffect(() => {
+    const savedBuddyExists = view.buddyId &&
+      buddy.buddyStreaks.some((streak) => streak.id === view.buddyId)
+    if (loaded && buddy.loaded && view.name !== 'home'
+      && !sets.some((set) => set.id === view.id) && !savedBuddyExists) {
+      setView({ name: 'home' })
+    }
+  }, [buddy.buddyStreaks, buddy.loaded, loaded, sets, view])
 
   useEffect(() => {
     document.title = appMode === 'medira' ? 'Medira' : 'Chrona'
@@ -162,7 +223,7 @@ function Workspace({ theme }) {
   const fromPop = useRef(false)
   const didInit = useRef(false)
   useEffect(() => {
-    window.history.replaceState({ view: { name: 'home' }, profileOpen: false, appMode }, '')
+    window.history.replaceState({ view, profileOpen: false, appMode }, '')
     const onPop = (e) => {
       const st = e.state || { view: { name: 'home' }, profileOpen: false }
       fromPop.current = true
@@ -220,7 +281,56 @@ function Workspace({ theme }) {
       return next
     })
 
-  const current = sets.find((s) => s.id === view.id)
+  const currentBuddy = buddy.buddyStreaks.find((streak) =>
+    streak.id === view.buddyId ||
+    (!view.buddyId && streak.legacySetId === view.id))
+  const localCurrent = sets.find((s) => s.id === view.id)
+  const current = currentBuddy
+    ? buddySetForUser(currentBuddy, user.id, localCurrent)
+    : localCurrent
+
+  const openSharing = (set, streak) => {
+    setSharingError('')
+    setSharingTarget(streak
+      ? { mode: 'manage', set, streak }
+      : { mode: 'choose', set })
+  }
+
+  const chooseSharing = async (role) => {
+    setSharingBusy(true)
+    try {
+      const streak = await buddy.promote(sharingTarget.set.id)
+      setSharingTarget({ mode: 'manage', set: sharingTarget.set, streak, role })
+    } catch (error) {
+      setSharingError(error.message)
+    } finally {
+      setSharingBusy(false)
+    }
+  }
+
+  const sendNudge = async () => {
+    if (!nudgeTarget) return
+    const key = `${nudgeTarget.streak.id}:${nudgeTarget.member.userId}`
+    setNudgeBusy(true)
+    setNudgeError('')
+    try {
+      const result = await buddy.ping(
+        nudgeTarget.streak.id,
+        nudgeTarget.member.userId,
+      )
+      setNudgeCounts((counts) => ({
+        ...counts,
+        [key]: result.nudgeNumber || Math.min(3, (counts[key] || 0) + 1),
+      }))
+      setNudgeTarget(null)
+    } catch (error) {
+      setNudgeError(error.status === 429
+        ? 'Three nudges have already been sent this hour.'
+        : error.message)
+    } finally {
+      setNudgeBusy(false)
+    }
+  }
 
   return (
     <div className={`app workspace-${appMode}`}>
@@ -266,38 +376,61 @@ function Workspace({ theme }) {
 
       <main className="content">
         {appMode === 'chrona' ? (
-        <div className={`view-anim ${dir}`} key={`${view.name}-${view.id || ''}`}>
+        <div className={`view-anim ${dir}`}
+          key={`${view.name}-${view.id || view.buddyId || ''}`}>
+        {buddy.error && <p className="sharing-feedback error" role="alert">
+          {buddy.error.message}
+          <button type="button" onClick={buddy.clearError}>Dismiss</button>
+        </p>}
         {view.name === 'home' && (
           <Home
             sets={sets}
+            user={user}
+            buddy={buddy}
+            activity={activity}
             loading={!loaded}
             onAdd={(kind) => {
               const s = newSet(kind)
               upsertSet(s)
               go({ name: 'edit', id: s.id }, 'forward')
             }}
-            onOpen={(id) => go({ name: 'run', id }, 'forward')}
-            onEdit={(id) => go({ name: 'edit', id }, 'forward')}
+            onOpen={(id, buddyId) => go({ name: 'run', id, buddyId }, 'forward')}
+            onEdit={(id, buddyId) => go({ name: 'edit', id, buddyId }, 'forward')}
             onDelete={(id) => deleteSet(id)}
             onDuplicate={(id) => duplicateSet(id)}
             onUpdate={upsertSet}
+            onShare={openSharing}
           />
         )}
 
         {view.name === 'edit' && current && (
           <SetEditor
             set={current}
-            onSave={(s) => {
-              upsertSet(s)
+            onSave={async (s) => {
+              if (currentBuddy) {
+                try {
+                  await buddy.update(currentBuddy.id, s)
+                } catch {
+                  return
+                }
+              } else upsertSet(s)
               go({ name: 'home' }, 'back')
             }}
-            onDelete={() => {
-              deleteSet(current.id)
+            onDelete={async () => {
+              if (currentBuddy) {
+                try {
+                  await buddy.leave(currentBuddy.id, String(user.id))
+                } catch {
+                  return
+                }
+              } else deleteSet(current.id)
               go({ name: 'home' }, 'back')
             }}
             onCancel={() =>
               go(
-                view.from === 'run' ? { name: 'run', id: current.id } : { name: 'home' },
+                view.from === 'run'
+                  ? { name: 'run', id: current.id, buddyId: currentBuddy?.id }
+                  : { name: 'home' },
                 'back',
               )
             }
@@ -307,8 +440,39 @@ function Workspace({ theme }) {
         {view.name === 'run' && current && (
           <RunView
             set={current}
-            onUpdate={upsertSet}
-            onEdit={() => go({ name: 'edit', id: current.id, from: 'run' }, 'forward')}
+            buddyStreak={currentBuddy}
+            user={user}
+            onUpdate={(next) => {
+              if (currentBuddy) {
+                buddy.setCompletion(
+                  currentBuddy.id,
+                  Boolean(next.completions?.[todayKey()]),
+                ).catch(() => {})
+              } else upsertSet(next)
+            }}
+            onEdit={() => go({
+              name: 'edit',
+              id: current.id,
+              buddyId: currentBuddy?.id,
+              from: 'run',
+            }, 'forward')}
+            onShare={() => openSharing(current, currentBuddy)}
+            onDelete={async () => {
+              try {
+                if (currentBuddy) {
+                  await buddy.leave(currentBuddy.id, String(user.id))
+                } else {
+                  deleteSet(current.id)
+                }
+                go({ name: 'home' }, 'back')
+              } catch {
+                // The buddy hook exposes the failure in the shared feedback surface.
+              }
+            }}
+            onNudge={(member) => {
+              setNudgeError('')
+              setNudgeTarget({ streak: currentBuddy, member })
+            }}
             onBack={() => go({ name: 'home' }, 'back')}
           />
         )}
@@ -319,6 +483,19 @@ function Workspace({ theme }) {
           </Suspense>
         )}
       </main>
+
+      {sharingTarget?.mode === 'choose' && <SharingChoiceModal
+        set={sharingTarget.set} busy={sharingBusy} error={sharingError}
+        onChoose={chooseSharing} onClose={() => setSharingTarget(null)} />}
+      {sharingTarget?.mode === 'manage' && <BuddyShareModal
+        streak={buddy.buddyStreaks.find(({ id }) => id === sharingTarget.streak.id)
+          || sharingTarget.streak}
+        userId={user.id} actions={buddy} initialRole={sharingTarget.role}
+        onClose={() => setSharingTarget(null)} />}
+      {nudgeTarget && <NudgeModal member={nudgeTarget.member}
+        count={nudgeCounts[`${nudgeTarget.streak.id}:${nudgeTarget.member.userId}`] || 0}
+        busy={nudgeBusy} error={nudgeError} onConfirm={sendNudge}
+        onClose={() => setNudgeTarget(null)} />}
 
       <footer className="app-footer">
         <a

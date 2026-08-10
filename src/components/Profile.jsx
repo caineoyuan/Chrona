@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Icon from './Icon.jsx'
+import { IconButton } from './PaperButton.jsx'
 import Avatar from './Avatar.jsx'
 import { api, useAuth } from '../auth.jsx'
 import { pushSupported, reregisterPush, subscribePush } from '../push.js'
@@ -449,10 +450,7 @@ export default function Profile({ onClose, themePreference, onThemeChange }) {
               <span className="profile-username">@{user?.username}</span>
             </div>
           </div>
-          <button type="button" className="icon-btn" onClick={onClose}
-            title="Close" aria-label="Close">
-            <Icon name="close" size={20} />
-          </button>
+          <IconButton label="Close" name="close" onClick={onClose} />
         </div>
 
         <div className="profile-form">

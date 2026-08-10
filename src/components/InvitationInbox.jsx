@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import GroupInvitesIcon from './GroupInvitesIcon.jsx'
 import Icon from './Icon.jsx'
+import { IconButton } from './PaperButton.jsx'
 
 function invitationTitle(invitation) {
   const resource = invitation.resourceType === 'buddy_streak'
@@ -24,13 +25,23 @@ function invitationAccess(invitation) {
 export default function InvitationInbox({ activity }) {
   const [open, setOpen] = useState(false)
   const [busyId, setBusyId] = useState(null)
+  const [acceptedNotice, setAcceptedNotice] = useState(false)
   const inviteCount = activity.pendingInvites.length
+
+  useEffect(() => {
+    if (!acceptedNotice) return undefined
+    const timer = window.setTimeout(() => setAcceptedNotice(false), 1200)
+    return () => window.clearTimeout(timer)
+  }, [acceptedNotice])
 
   const act = async (invitation, action, accepted = false) => {
     setBusyId(invitation.id)
     try {
       await action(invitation.id)
-      if (accepted) window.dispatchEvent(new CustomEvent('chrona:invite-accepted'))
+      if (accepted) {
+        setAcceptedNotice(true)
+        window.dispatchEvent(new CustomEvent('chrona:invite-accepted'))
+      }
     } catch {
       // The hook displays the server response in the modal.
     } finally {
@@ -60,17 +71,18 @@ export default function InvitationInbox({ activity }) {
               <GroupInvitesIcon size={32} />
               <h2 className="modal-title" id="invitation-title">Invites</h2>
             </div>
-            <button type="button" className="icon-btn" aria-label="Close invites"
-              onClick={() => setOpen(false)}>
-              <Icon name="close" size={20} />
-            </button>
+            <IconButton label="Close invites" name="close"
+              onClick={() => setOpen(false)} />
           </header>
           <div className="invitation-modal-body">
             {activity.error && <p className="sharing-feedback error" role="alert">
               {activity.error}
             </p>}
             {!activity.loaded && <p className="invitation-empty">Loading invites…</p>}
-            {activity.loaded && !inviteCount && <p className="invitation-empty">No invites.</p>}
+            {acceptedNotice
+              ? <p className="invitation-empty invitation-accepted" role="status">Accepted!</p>
+              : activity.loaded && !inviteCount &&
+                <p className="invitation-empty">No invites.</p>}
             {activity.pendingInvites.map((invitation) => (
               <article className="invitation-row" key={invitation.id}>
                 <div>

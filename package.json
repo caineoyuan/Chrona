@@ -9,6 +9,7 @@
     "build": "vite build",
     "lint": "oxlint",
     "test": "node --test",
+    "test:e2e:sharing": "node tests/sharing-three-account.e2e.mjs",
     "check:sharing-readiness": "node scripts/check-sharing-readiness.mjs",
     "preview": "vite preview",
     "start": "node server.js"

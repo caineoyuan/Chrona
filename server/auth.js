@@ -229,9 +229,16 @@ export function createAuthRouter(queryFn = query) {
       const timezone = normalizeTimezone(req.body?.timezone)
       if (!timezone) return res.status(400).json({ error: 'Invalid IANA timezone.' })
       const result = await queryFn(
-        `UPDATE users SET timezone = $1, updated_at = now()
-         WHERE id = $2 AND status = 'active'
-         RETURNING ${PROFILE_COLUMNS}`,
+        `WITH updated_user AS (
+           UPDATE users SET timezone = $1, updated_at = now()
+           WHERE id = $2 AND status = 'active'
+           RETURNING ${PROFILE_COLUMNS}
+         ), updated_memberships AS (
+           UPDATE buddy_streak_members
+           SET timezone = $1
+           WHERE user_id = $2 AND removed_at IS NULL
+         )
+         SELECT ${PROFILE_COLUMNS} FROM updated_user`,
         [timezone, req.userId],
       )
       const user = result.rows[0]

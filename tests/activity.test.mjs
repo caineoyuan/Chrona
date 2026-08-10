@@ -45,11 +45,11 @@ test('activity is cursor paginated and exposes only minimal event payloads', asy
       rows: [
         {
           id: 49,
-          resource_type: 'medication_list',
+          resource_type: 'buddy_streak',
           resource_id: 12,
           actor_user_id: 8,
-          event_type: 'accepted',
-          payload: { inviteId: '31', privateNote: 'do not expose' },
+          event_type: 'completed',
+          payload: { periodKey: 'day:2026-08-09', privateNote: 'do not expose' },
           created_at: '2026-08-09T12:00:00.000Z',
           read_at: null,
           actor_username: 'friend',
@@ -57,7 +57,7 @@ test('activity is cursor paginated and exposes only minimal event payloads', asy
         },
         {
           id: 48,
-          resource_type: 'medication_list',
+          resource_type: 'buddy_streak',
           resource_id: 12,
           actor_user_id: 8,
           event_type: 'edited',
@@ -77,7 +77,7 @@ test('activity is cursor paginated and exposes only minimal event payloads', asy
 
   assert.equal(response.status, 200)
   assert.equal(body.nextCursor, '48')
-  assert.deepEqual(body.activities[0].payload, { inviteId: '31' })
+  assert.deepEqual(body.activities[0].payload, { periodKey: 'day:2026-08-09' })
   assert.deepEqual(body.activities[1].payload, {})
   assert.equal(body.activities[0].actor.displayUsername, 'Friend')
 })

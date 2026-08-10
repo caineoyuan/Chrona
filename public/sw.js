@@ -15,18 +15,23 @@ self.addEventListener('push', (event) => {
       tag: data.tag,
       icon: data.icon || '/timer-shutter.png',
       badge: data.icon || '/timer-shutter.png',
+      data: { url: data.url || '/' },
     }),
   )
 })
 
 self.addEventListener('notificationclick', (event) => {
+  const url = event.notification.data?.url || '/'
   event.notification.close()
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
       for (const c of list) {
+        if ('navigate' in c) {
+          return c.navigate(url).then((client) => client?.focus())
+        }
         if ('focus' in c) return c.focus()
       }
-      if (clients.openWindow) return clients.openWindow('/')
+      if (clients.openWindow) return clients.openWindow(url)
     }),
   )
 })

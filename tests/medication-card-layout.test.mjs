@@ -9,8 +9,8 @@ test('medication list cards use their full width and show concise schedule detai
   ])
 
   const card = app.slice(
-    app.indexOf('className="card med-card clickable"'),
-    app.indexOf('</article>', app.indexOf('className="card med-card clickable"')),
+    app.indexOf('<MedicationCardShell key={med.id}'),
+    app.indexOf('</MedicationCardShell>', app.indexOf('<MedicationCardShell key={med.id}')),
   )
 
   assert.doesNotMatch(card, /meta-pill|paused-badge|className="meta-row"/)

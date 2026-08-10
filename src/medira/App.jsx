@@ -16,6 +16,10 @@ import { SaveRegular } from '@fluentui/react-icons/svg/save'
 import ChronaIcon from '../components/Icon'
 import Avatar from '../components/Avatar'
 import {
+  CheckCircleButton,
+  IconButton as PaperIconButton,
+} from '../components/PaperButton'
+import {
   addTakenHistoryRecord,
   adjustScheduleAfterDose,
   formatDateTime,
@@ -256,11 +260,8 @@ function Icon({ name, size = 20 }) {
 }
 
 function SmallIconButton({ label, name, size = 17, className = '', ...props }) {
-  return (
-    <button type="button" className={`icon-btn ${className}`} aria-label={label} title={label} {...props}>
-      <Icon name={name} size={size} />
-    </button>
-  )
+  return <PaperIconButton label={label} icon={<Icon name={name} size={size} />}
+    className={className} {...props} />
 }
 
 function TimeInput({ value, onChange, onComplete, label, compact = false }) {
@@ -968,22 +969,22 @@ function DoseCard({ dose, onTaken, onSkip, onUndo, onTimeChange, onOpen }) {
         <div className="dose-action-column">
           {!canRecord ? (
             <>
-              <button className={`taken-toggle ${readOnlyToggleClass}`}
-                title="Read only" aria-label={`${isTaken ? 'Taken' : isSkipped ? 'Skipped' : 'Not taken'}, read only`}
-                aria-pressed={isTaken ? 'true' : 'false'} disabled>
-                <Icon name={isSkipped ? 'close' : 'check'} size={20} />
-              </button>
+              <CheckCircleButton className={readOnlyToggleClass}
+                label={`${isTaken ? 'Taken' : isSkipped ? 'Skipped' : 'Not taken'}, read only`}
+                complete={isTaken} disabled
+                icon={isSkipped ? <Icon name="close" size={20} /> : undefined} />
               <span className="read-only-label">Read only</span>
             </>
           ) : isSkipped ? (
-            <button className="taken-toggle skipped" title="Undo skip" aria-label="Undo skip"
-              onClick={(event) => { event.stopPropagation(); onUndo(dose) }}><Icon name="close" size={20} /></button>
+            <CheckCircleButton className="skipped" label="Undo skip"
+              onChange={() => onUndo(dose)}
+              icon={<Icon name="close" size={20} />} />
           ) : isTaken ? (
-            <button className="taken-toggle complete" title="Undo taken" aria-label="Undo taken" aria-pressed="true"
-              onClick={(event) => { event.stopPropagation(); onUndo(dose) }}><Icon name="check" size={20} /></button>
+            <CheckCircleButton complete label="Undo taken"
+              onChange={() => onUndo(dose)} />
           ) : (
-            <button className={`taken-toggle ${isMissed ? 'overdue' : ''}`} title="Mark taken" aria-label="Mark taken" aria-pressed="false"
-              onClick={(event) => { event.stopPropagation(); onTaken(dose) }}><Icon name="check" size={20} /></button>
+            <CheckCircleButton className={isMissed ? 'overdue' : ''} label="Mark taken"
+              onChange={() => onTaken(dose)} />
           )}
         </div>
       </div>
@@ -1442,6 +1443,103 @@ function MedicationProfileSwitcher({ profiles, selectedId, onSelect }) {
   )
 }
 
+function MedicationCardShell({
+  medication,
+  index,
+  permissions,
+  onOpen,
+  onTogglePause,
+  onEdit,
+  onDelete,
+  children,
+}) {
+  const [dx, setDx] = useState(0)
+  const dxRef = useRef(0)
+  const start = useRef(null)
+  const base = useRef(0)
+  const moved = useRef(false)
+  const hasActions = permissions.canEdit || permissions.canDelete
+  const REVEAL = 56
+
+  const updateDx = (value) => {
+    dxRef.current = value
+    setDx(value)
+  }
+  const closeAndRun = (action) => {
+    updateDx(0)
+    action()
+  }
+  const onPointerDown = (event) => {
+    if (!hasActions || event.target.closest('button')) return
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    event.currentTarget.setPointerCapture(event.pointerId)
+    start.current = event.clientX
+    base.current = dxRef.current
+    moved.current = false
+  }
+  const onPointerMove = (event) => {
+    if (start.current == null) return
+    const delta = event.clientX - start.current
+    if (Math.abs(delta) > 6) moved.current = true
+    updateDx(Math.max(-REVEAL, Math.min(0, base.current + delta)))
+  }
+  const onPointerEnd = () => {
+    if (start.current == null) return
+    updateDx(dxRef.current < -REVEAL / 2 ? -REVEAL : 0)
+    start.current = null
+  }
+  const open = () => {
+    if (moved.current) return
+    if (dxRef.current !== 0) {
+      updateDx(0)
+      return
+    }
+    onOpen()
+  }
+
+  return (
+    <div className={`card-wrap medication-card-wrap ${index % 2 ? 'purple' : ''} ${medication.paused ? 'paused' : ''}`}>
+      {hasActions && <div className="med-card-actions">
+        {permissions.canEdit && <PaperIconButton variant="swipe"
+          label={`${medication.paused ? 'Resume' : 'Pause'} ${medication.name}`}
+          icon={<Icon name={medication.paused ? 'play' : 'pause'} size={17} />}
+          onFocus={() => updateDx(-REVEAL)}
+          onClick={() => closeAndRun(onTogglePause)} />}
+        {permissions.canEdit && <PaperIconButton variant="swipe"
+          label={`Edit ${medication.name}`}
+          icon={<Icon name="edit" size={17} />}
+          onFocus={() => updateDx(-REVEAL)}
+          onClick={() => closeAndRun(onEdit)} />}
+        {permissions.canDelete && <PaperIconButton variant="swipe"
+          label={`Delete ${medication.name}`}
+          icon={<Icon name="trash" size={17} />}
+          className="danger"
+          onFocus={() => updateDx(-REVEAL)}
+          onClick={() => closeAndRun(onDelete)} />}
+      </div>}
+      <article
+        className="card med-card clickable"
+        style={{ transform: `translateX(${dx}px)` }}
+        tabIndex="0"
+        aria-label={`View ${medication.name} details`}
+        onClick={open}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerEnd}
+        onPointerCancel={onPointerEnd}
+        onKeyDown={(event) => {
+          if (event.currentTarget === event.target && (event.key === 'Enter' || event.key === ' ')) {
+            event.preventDefault()
+            open()
+          }
+        }}
+      >
+        {children}
+      </article>
+    </div>
+  )
+}
+
 function SharedWith({ members }) {
   const [hovered, setHovered] = useState(null)
   const [selected, setSelected] = useState(null)
@@ -1880,15 +1978,13 @@ function App({ colorScheme = 'dark' }) {
                 const medNext = permissions.canViewSchedule ? getNextDose([med], now) : null
                 const lowStock = med.inventory?.remaining != null
                   && inventoryInteger(med.inventory.remaining) <= inventoryInteger(med.inventory.refillAt)
-                return <div className={`card-wrap ${index % 2 ? 'purple' : ''} ${med.paused ? 'paused' : ''}`} key={med.id}><article
-                  className="card med-card clickable" tabIndex="0" aria-label={`View ${med.name} details`}
-                  onClick={() => setViewingMedication(med)}
-                  onKeyDown={(event) => { if (event.currentTarget === event.target && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setViewingMedication(med) } }}>
-                  <div className="med-card-head"><div className="med-symbol"><Icon name={med.trackInjectionSite ? 'syringe' : 'pill'} size={20} /></div><div className="medication-actions" onClick={(event) => event.stopPropagation()}>
-                    {permissions.canEdit && <SmallIconButton label={`${med.paused ? 'Resume' : 'Pause'} ${med.name}`} name={med.paused ? 'play' : 'pause'} className={med.paused ? 'resume' : ''} onClick={() => togglePause(med)} />}
-                    {permissions.canEdit && <SmallIconButton label={`Edit ${med.name}`} name="edit" onClick={() => setEditing(med)} />}
-                    {permissions.canDelete && <SmallIconButton label={`Delete ${med.name}`} name="trash" className="danger" onClick={() => setConfirmingDelete(med)} />}
-                  </div></div>
+                return <MedicationCardShell key={med.id} medication={med} index={index}
+                  permissions={permissions}
+                  onOpen={() => setViewingMedication(med)}
+                  onTogglePause={() => togglePause(med)}
+                  onEdit={() => setEditing(med)}
+                  onDelete={() => setConfirmingDelete(med)}>
+                  <div className="med-card-head"><div className="med-symbol"><Icon name={med.trackInjectionSite ? 'syringe' : 'pill'} size={20} /></div></div>
                   <div className="med-name-row"><h2 className="card-title">{med.name}</h2>{med.paused && <span className="paused-label">Paused</span>}</div><p className="dose-label">{med.dose || 'Dose not specified'}</p>
                   {med.notes && <div className="notes"><p>{med.notes}</p></div>}
                   <div className={`inventory-row ${lowStock ? 'low' : ''}`}>
@@ -1904,7 +2000,7 @@ function App({ colorScheme = 'dark' }) {
                     <span>Frequency<strong>{permissions.canViewSchedule ? scheduleLabels(med)[0] : 'Not shared'}</strong></span>
                     {!permissions.canViewHistory && <span>History<strong>Private</strong></span>}
                   </div>
-                </article></div>
+                </MedicationCardShell>
               })}
             </div>
           </div>

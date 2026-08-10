@@ -106,6 +106,10 @@ export const migrations = [
   {
     version: 3,
     name: 'sharing_invitations',
+    legacyAppliedDefinitions: [{
+      name: 'sharing_and_buddy_streaks',
+      checksum: 'e36092ed9eed412490ef147a8c96a681029ba8b70327e827b7f4570c9736cf41',
+    }],
     up: `
       CREATE TABLE IF NOT EXISTS share_invites (
         id                   BIGSERIAL PRIMARY KEY,
@@ -303,6 +307,10 @@ export const migrations = [
   {
     version: 5,
     name: 'collaboration_activity',
+    legacyAppliedDefinitions: [{
+      name: 'collaboration_activity',
+      checksum: '1da2063144d3c0c9c081b8cdd2938cdf6b325fafce9901907f9461c400de3a7e',
+    }],
     up: `
       CREATE TABLE IF NOT EXISTS collaboration_events (
         id                 BIGSERIAL PRIMARY KEY,
@@ -353,6 +361,106 @@ export const migrations = [
     `,
   },
   {
+    version: 7,
+    name: 'buddy_streak_private_set_promotion',
+    legacyAppliedDefinitions: [{
+      name: 'buddy_streak_private_set_promotion',
+      checksum: '06fd31e7f83f3b9b04021a3e32295c75629bd0d7ff536e7b0c9fcd2d4771d007',
+    }],
+    up: `
+      CREATE TABLE IF NOT EXISTS buddy_streaks (
+        id                   BIGSERIAL PRIMARY KEY,
+        definition           JSONB NOT NULL,
+        version              INTEGER NOT NULL DEFAULT 1,
+        created_by_user_id   INTEGER NOT NULL REFERENCES users(id),
+        legacy_set_id        TEXT,
+        created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+        deleted_at           TIMESTAMPTZ,
+        CONSTRAINT buddy_streaks_version_check CHECK (version > 0),
+        CONSTRAINT buddy_streaks_definition_check
+          CHECK (jsonb_typeof(definition) = 'object'),
+        CONSTRAINT buddy_streaks_dates_check
+          CHECK (deleted_at IS NULL OR deleted_at >= created_at)
+      );
+
+      CREATE TABLE IF NOT EXISTS buddy_streak_members (
+        buddy_streak_id BIGINT NOT NULL REFERENCES buddy_streaks(id) ON DELETE CASCADE,
+        user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role             TEXT NOT NULL DEFAULT 'participant',
+        timezone         TEXT NOT NULL DEFAULT 'UTC',
+        joined_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+        active_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+        removed_at       TIMESTAMPTZ,
+        PRIMARY KEY (buddy_streak_id, user_id),
+        CONSTRAINT buddy_streak_members_role_check
+          CHECK (role IN ('participant', 'observer')),
+        CONSTRAINT buddy_streak_members_dates_check
+          CHECK (removed_at IS NULL OR removed_at >= active_at)
+      );
+
+      CREATE TABLE IF NOT EXISTS buddy_streak_completions (
+        buddy_streak_id    BIGINT NOT NULL REFERENCES buddy_streaks(id) ON DELETE CASCADE,
+        user_id            INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        period_key         TEXT NOT NULL,
+        local_completed_at TIMESTAMP NOT NULL,
+        completed_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+        source             TEXT NOT NULL DEFAULT 'manual',
+        PRIMARY KEY (buddy_streak_id, user_id, period_key),
+        CONSTRAINT buddy_streak_completions_member_fkey
+          FOREIGN KEY (buddy_streak_id, user_id)
+          REFERENCES buddy_streak_members (buddy_streak_id, user_id)
+          ON DELETE CASCADE,
+        CONSTRAINT buddy_streak_completions_source_check
+          CHECK (source IN ('manual', 'timer', 'import'))
+      );
+
+      CREATE TABLE IF NOT EXISTS ping_rate_limits (
+        id                 BIGSERIAL PRIMARY KEY,
+        sender_user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        recipient_user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        resource_type      TEXT NOT NULL,
+        resource_id        BIGINT NOT NULL,
+        sent_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+        CONSTRAINT ping_rate_limits_resource_type_check
+          CHECK (resource_type = 'buddy_streak'),
+        CONSTRAINT ping_rate_limits_distinct_users_check
+          CHECK (sender_user_id <> recipient_user_id)
+      );
+
+      ALTER TABLE share_invites DROP CONSTRAINT IF EXISTS share_invites_resource_type_check;
+      ALTER TABLE share_invites ADD CONSTRAINT share_invites_resource_type_check
+        CHECK (resource_type IN ('buddy_streak', 'medication', 'medication_list'));
+
+      ALTER TABLE collaboration_events
+        DROP CONSTRAINT IF EXISTS collaboration_events_resource_type_check;
+      ALTER TABLE collaboration_events
+        ADD CONSTRAINT collaboration_events_resource_type_check
+        CHECK (resource_type IN ('buddy_streak', 'medication', 'medication_list'));
+      ALTER TABLE collaboration_events
+        DROP CONSTRAINT IF EXISTS collaboration_events_event_type_check;
+      ALTER TABLE collaboration_events
+        ADD CONSTRAINT collaboration_events_event_type_check
+        CHECK (event_type IN (
+          'invite', 'accepted', 'completed', 'ping', 'edited', 'removed', 'automatic_reminder'
+        ));
+
+      CREATE UNIQUE INDEX IF NOT EXISTS buddy_streaks_legacy_set_idx
+        ON buddy_streaks (created_by_user_id, legacy_set_id)
+        WHERE legacy_set_id IS NOT NULL AND deleted_at IS NULL;
+      CREATE INDEX IF NOT EXISTS buddy_streaks_creator_idx
+        ON buddy_streaks (created_by_user_id) WHERE deleted_at IS NULL;
+      CREATE INDEX IF NOT EXISTS buddy_streak_members_user_idx
+        ON buddy_streak_members (user_id, buddy_streak_id) WHERE removed_at IS NULL;
+      CREATE INDEX IF NOT EXISTS buddy_streak_completions_period_idx
+        ON buddy_streak_completions (buddy_streak_id, period_key);
+      CREATE INDEX IF NOT EXISTS ping_rate_limits_window_idx
+        ON ping_rate_limits (
+          sender_user_id, recipient_user_id, resource_type, resource_id, sent_at DESC
+        );
+    `,
+  },
+  {
     version: 8,
     name: 'medication_rollback_safety',
     up: `
@@ -370,6 +478,22 @@ export const migrations = [
       CREATE INDEX IF NOT EXISTS medication_dose_events_active_history_idx
         ON medication_dose_events (medication_id, scheduled_at DESC)
         WHERE deleted_at IS NULL;
+    `,
+  },
+  {
+    version: 9,
+    name: 'collaboration_notification_delivery',
+    up: `
+      ALTER TABLE collaboration_events
+        ADD COLUMN IF NOT EXISTS push_requested_at TIMESTAMPTZ;
+      ALTER TABLE collaboration_events
+        ADD COLUMN IF NOT EXISTS push_claimed_at TIMESTAMPTZ;
+      ALTER TABLE collaboration_events
+        ADD COLUMN IF NOT EXISTS push_dispatched_at TIMESTAMPTZ;
+
+      CREATE INDEX IF NOT EXISTS collaboration_events_pending_push_idx
+        ON collaboration_events (push_requested_at, id)
+        WHERE push_requested_at IS NOT NULL AND push_dispatched_at IS NULL;
     `,
   },
   {
@@ -441,13 +565,13 @@ export const migrations = [
 
       ALTER TABLE share_invites DROP CONSTRAINT IF EXISTS share_invites_resource_type_check;
       ALTER TABLE share_invites ADD CONSTRAINT share_invites_resource_type_check
-        CHECK (resource_type = 'medication_list');
+        CHECK (resource_type IN ('buddy_streak', 'medication', 'medication_list'));
 
       ALTER TABLE collaboration_events
         DROP CONSTRAINT IF EXISTS collaboration_events_resource_type_check;
       ALTER TABLE collaboration_events
         ADD CONSTRAINT collaboration_events_resource_type_check
-        CHECK (resource_type IN ('medication', 'medication_list'));
+        CHECK (resource_type IN ('buddy_streak', 'medication', 'medication_list'));
     `,
   },
 ]
@@ -503,7 +627,11 @@ export async function runMigrations(pool, orderedMigrations = migrations) {
       if (!migration) {
         throw new Error(`Database has unknown migration version ${record.version}`)
       }
-      if (record.name !== migration.name || record.checksum !== migrationChecksum(migration)) {
+      const currentDefinition = record.name === migration.name &&
+        record.checksum === migrationChecksum(migration)
+      const legacyDefinition = migration.legacyAppliedDefinitions?.some((definition) =>
+        definition.name === record.name && definition.checksum === record.checksum)
+      if (!currentDefinition && !legacyDefinition) {
         throw new Error(`Database migration ${record.version} no longer matches its applied definition`)
       }
     }

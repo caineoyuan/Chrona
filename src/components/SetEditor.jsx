@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { uid } from '../storage.js'
 import Icon from './Icon.jsx'
+import { IconButton } from './PaperButton.jsx'
 import {
   totalSeconds,
   formatDuration,
@@ -202,15 +203,12 @@ function StepRow({
         )}
       </div>
       <div className="step-actions">
-        <button className="icon-btn" disabled={isFirst} onClick={() => onMove(-1)} title="Move up">
-          <Icon name="up" size={16} />
-        </button>
-        <button className="icon-btn" disabled={isLast} onClick={() => onMove(1)} title="Move down">
-          <Icon name="down" size={16} />
-        </button>
-        <button className="icon-btn danger" onClick={onRemove} title="Remove">
-          <Icon name="trash" size={16} />
-        </button>
+        <IconButton label="Move up" name="up" iconSize={16}
+          disabled={isFirst} onClick={() => onMove(-1)} />
+        <IconButton label="Move down" name="down" iconSize={16}
+          disabled={isLast} onClick={() => onMove(1)} />
+        <IconButton label="Remove" name="trash" iconSize={16}
+          className="danger" onClick={onRemove} />
       </div>
     </div>
   )
@@ -313,22 +311,10 @@ export default function SetEditor({ set, onSave, onDelete, onCancel }) {
       onTouchEnd={onSwipeEnd}
     >
       <div className="editor-head">
-        <button
-          className="icon-btn"
-          onClick={onCancel}
-          title="Back"
-          aria-label="Back"
-        >
-          <Icon name="arrow-left" size={22} />
-        </button>
-        <button
-          className="icon-btn save-icon-btn"
-          onClick={() => onSave(draft)}
-          title="Save set"
-          aria-label="Save set"
-        >
-          <Icon name="save" size={20} />
-        </button>
+        <IconButton label="Back" name="arrow-left" iconSize={22}
+          onClick={onCancel} />
+        <IconButton label="Save set" name="save" className="save-icon-btn"
+          onClick={() => onSave(draft)} />
       </div>
 
       <input
