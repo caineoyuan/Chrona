@@ -1,2 +1,3 @@
-export const sharingEnabled =
-  import.meta.env?.VITE_SHARING_ENABLED?.trim().toLowerCase() === 'true'
+const sharingSetting = import.meta.env?.VITE_SHARING_ENABLED?.trim().toLowerCase()
+
+export const sharingEnabled = sharingSetting !== 'false'

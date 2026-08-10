@@ -36,15 +36,14 @@ npm start       # serves dist/ on $PORT (Express)
 On Railway: set the **Build Command** to `npm run build` and the **Start
 Command** to `npm start`. Railway provides `PORT` automatically.
 
-Sharing is rollout-gated and defaults off on both sides. Enable it only after
-the production database readiness check succeeds:
+Sharing is enabled by default. Run the production database readiness check
+before deployment; use the flags only as an emergency kill switch:
 
 ```bash
 npm run check:sharing-readiness # read-only; reports schema/migration status only
-SHARING_ENABLED=true            # server APIs
-VITE_SHARING_ENABLED=true       # client UI, set during npm run build
+SHARING_ENABLED=false           # disable server APIs
+VITE_SHARING_ENABLED=false      # hide client UI, set during npm run build
 ```
 
-The server flag accepts `1`, `true`, `yes`, or `on`; the Vite build flag
-requires `true`. Keep both disabled during migration validation, then enable
-both together. `GET /api/health` reports the active server-side sharing flag.
+The server flag accepts `1`, `true`, `yes`, or `on` to enable and any other
+non-empty value to disable. `GET /api/health` reports the active server flag.
