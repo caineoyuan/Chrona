@@ -16,12 +16,13 @@ test('Chrona restores valid set pages and falls back when the set no longer exis
 })
 
 test('Medira restores its tab, shared profile, and open medication details', async () => {
-  const source = await readFile(
-    new URL('../src/medira/App.jsx', import.meta.url),
-    'utf8',
-  )
+  const [source, navigation] = await Promise.all([
+    readFile(new URL('../src/medira/App.jsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/medira/navigation.js', import.meta.url), 'utf8'),
+  ])
 
-  assert.match(source, /const NAVIGATION_STORAGE_KEY = 'medira-navigation-state'/)
+  assert.match(navigation, /export const NAVIGATION_STORAGE_KEY = 'medira-navigation-state'/)
+  assert.match(navigation, /export function loadMediraNavigation/)
   assert.match(source, /const \[initialNavigation\] = useState\(loadMediraNavigation\)/)
   assert.match(source, /initialNavigation\.selectedProfileId/)
   assert.match(source, /pendingViewingMedicationId = useRef\(initialNavigation\.viewingMedicationId\)/)

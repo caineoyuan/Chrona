@@ -1,24 +1,17 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import './index.css'
 import { FluentProvider, Spinner, Switch, webDarkTheme, webLightTheme } from '@fluentui/react-components'
-import { AddFilled } from '@fluentui/react-icons/svg/add'
-import { AppsListRegular } from '@fluentui/react-icons/svg/apps-list'
-import { BoxRegular } from '@fluentui/react-icons/svg/box'
-import { CameraRegular } from '@fluentui/react-icons/svg/camera'
-import { ChevronDownRegular } from '@fluentui/react-icons/svg/chevron-down'
-import { ChevronUpRegular } from '@fluentui/react-icons/svg/chevron-up'
-import { CheckmarkFilled } from '@fluentui/react-icons/svg/checkmark'
-import { ClockRegular } from '@fluentui/react-icons/svg/clock'
-import { DismissRegular } from '@fluentui/react-icons/svg/dismiss'
-import { PlayRegular } from '@fluentui/react-icons/svg/play'
-import { SearchRegular } from '@fluentui/react-icons/svg/search'
-import { SaveRegular } from '@fluentui/react-icons/svg/save'
-import ChronaIcon from '../components/Icon'
 import Avatar from '../components/Avatar'
+import Icon from '../components/PaperIcon'
 import {
   CheckCircleButton,
   IconButton as PaperIconButton,
 } from '../components/PaperButton'
+import {
+  loadMediraNavigation,
+  saveMediraNavigation,
+  saveMediraView,
+} from './navigation.js'
 import {
   addTakenHistoryRecord,
   adjustScheduleAfterDose,
@@ -88,9 +81,6 @@ const mediraLightTheme = {
   colorNeutralBackground1: '#f7f7f4',
 }
 
-const VIEW_STORAGE_KEY = 'medira-last-view'
-const LEGACY_VIEW_STORAGE_KEY = 'dosewell-last-view'
-const NAVIGATION_STORAGE_KEY = 'medira-navigation-state'
 const REMINDER_PRESETS = [
   { value: 0, label: 'At time' },
   { value: 5, label: '5 min' },
@@ -103,44 +93,6 @@ const REMINDER_PRESET_VALUES = REMINDER_PRESETS.map(({ value }) => value)
 const WEEKDAY_NAMES = [
   'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
 ]
-
-function loadMediraView() {
-  try {
-    const savedView = localStorage.getItem(VIEW_STORAGE_KEY)
-      ?? localStorage.getItem(LEGACY_VIEW_STORAGE_KEY)
-    if (localStorage.getItem(VIEW_STORAGE_KEY) === null && savedView !== null) {
-      localStorage.setItem(VIEW_STORAGE_KEY, savedView)
-      localStorage.removeItem(LEGACY_VIEW_STORAGE_KEY)
-    }
-    return savedView === 'medications' ? 'medications' : 'today'
-  } catch {
-    return 'today'
-  }
-}
-
-function loadMediraNavigation() {
-  const fallback = {
-    view: loadMediraView(),
-    selectedProfileId: '',
-    viewingMedicationId: '',
-  }
-  try {
-    const saved = JSON.parse(localStorage.getItem(NAVIGATION_STORAGE_KEY))
-    return {
-      view: ['today', 'medications'].includes(saved?.view)
-        ? saved.view
-        : fallback.view,
-      selectedProfileId: typeof saved?.selectedProfileId === 'string'
-        ? saved.selectedProfileId
-        : '',
-      viewingMedicationId: typeof saved?.viewingMedicationId === 'string'
-        ? saved.viewingMedicationId
-        : '',
-    }
-  } catch {
-    return fallback
-  }
-}
 
 function formatTime(time) {
   return new Date(`2000-01-01T${time}`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -223,40 +175,6 @@ function medicationListClipboardContent(medications) {
       `<li><strong>${escapeHtml(medication.name)}</strong><ul><li>Dose: ${escapeHtml(dose)}</li><li>Schedule: ${escapeHtml(schedule)}</li>${count == null ? '' : `<li>${count} ${count === 1 ? 'dose' : 'doses'} taken since ${escapeHtml(since)}</li>`}</ul></li>`
     )).join('')}</ul>`,
   }
-}
-
-function Icon({ name, size = 20 }) {
-  if (name === 'pill' || name === 'syringe') {
-    return <img className="medication-icon" src={name === 'syringe' ? '/syringe-icon.svg' : '/medication-icon.png'} width={size} height={size} alt="" aria-hidden="true" />
-  }
-  if (name === 'edit' || name === 'copy' || name === 'trash' || name === 'link' || name === 'user-add') {
-    return <ChronaIcon name={name} size={size} className="icon action-glyph" />
-  }
-  if (name === 'pause') {
-    return (
-      <svg className="icon action-glyph" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="5" y="3" width="5" height="18" rx="1" fill="currentColor" />
-        <rect x="14" y="3" width="5" height="18" rx="1" fill="currentColor" />
-      </svg>
-    )
-  }
-  const icons = {
-    plus: AddFilled,
-    check: CheckmarkFilled,
-    clock: ClockRegular,
-    close: DismissRegular,
-    camera: CameraRegular,
-    play: PlayRegular,
-    box: BoxRegular,
-    list: AppsListRegular,
-    search: SearchRegular,
-    save: SaveRegular,
-    chevron: ChevronDownRegular,
-    'chevron-down': ChevronDownRegular,
-    'chevron-up': ChevronUpRegular,
-  }
-  const FluentIcon = icons[name]
-  return FluentIcon ? <FluentIcon className="icon" fontSize={size} aria-hidden="true" /> : null
 }
 
 function SmallIconButton({ label, name, size = 17, className = '', ...props }) {
@@ -1632,15 +1550,11 @@ function App({ colorScheme = 'dark' }) {
   }, [medications, medicationsLoaded])
 
   useEffect(() => {
-    try {
-      localStorage.setItem(NAVIGATION_STORAGE_KEY, JSON.stringify({
-        view,
-        selectedProfileId: selectedProfile?.ownerUserId || selectedProfileId,
-        viewingMedicationId: viewingMedication?.id || pendingViewingMedicationId.current,
-      }))
-    } catch {
-      // Navigation still works when storage is unavailable.
-    }
+    saveMediraNavigation({
+      view,
+      selectedProfileId: selectedProfile?.ownerUserId || selectedProfileId,
+      viewingMedicationId: viewingMedication?.id || pendingViewingMedicationId.current,
+    })
   }, [selectedProfile, selectedProfileId, view, viewingMedication])
 
   useEffect(() => {
@@ -1686,11 +1600,7 @@ function App({ colorScheme = 'dark' }) {
 
   const navigate = (nextView) => {
     setView(nextView)
-    try {
-      localStorage.setItem(VIEW_STORAGE_KEY, nextView)
-    } catch {
-      // Navigation still works when storage is unavailable.
-    }
+    saveMediraView(nextView)
   }
 
   useEffect(() => {

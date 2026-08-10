@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, isLocalPreview } from './auth.jsx'
+import {
+  readStorageJson,
+  readStorageValue,
+  writeStorageJson,
+  writeStorageValue,
+} from './storage-utils.js'
 
 const PREVIEW_STORAGE_KEY = 'chrona-preview-sets-v1'
 const PREVIEW_SEED_KEY = 'chrona-preview-seed-v1'
@@ -102,14 +108,14 @@ function createPreviewSets() {
 function loadPreviewSets() {
   const previewSets = createPreviewSets()
   try {
-    const saved = JSON.parse(localStorage.getItem(PREVIEW_STORAGE_KEY) || '[]')
-    if (localStorage.getItem(PREVIEW_SEED_KEY)) return Array.isArray(saved) ? saved : previewSets
+    const saved = readStorageJson(PREVIEW_STORAGE_KEY, [])
+    if (readStorageValue(PREVIEW_SEED_KEY)) return Array.isArray(saved) ? saved : previewSets
 
     const existing = Array.isArray(saved) ? saved : []
     const existingIds = new Set(existing.map((set) => set.id))
     const seeded = [...existing, ...previewSets.filter((set) => !existingIds.has(set.id))]
-    localStorage.setItem(PREVIEW_STORAGE_KEY, JSON.stringify(seeded))
-    localStorage.setItem(PREVIEW_SEED_KEY, '1')
+    writeStorageJson(PREVIEW_STORAGE_KEY, seeded)
+    writeStorageValue(PREVIEW_SEED_KEY, '1')
     return seeded
   } catch (error) {
     console.error('Could not load Chrona preview data:', error)
@@ -149,11 +155,9 @@ export function useSets() {
   useEffect(() => {
     if (!loadedRef.current) return
     if (isLocalPreview) {
-      try {
-        localStorage.setItem(PREVIEW_STORAGE_KEY, JSON.stringify(sets))
-      } catch (error) {
-        console.error('Could not save Chrona preview data:', error)
-      }
+      writeStorageJson(PREVIEW_STORAGE_KEY, sets, {
+        onError: (error) => console.error('Could not save Chrona preview data:', error),
+      })
       return
     }
     if (saveTimer.current) clearTimeout(saveTimer.current)

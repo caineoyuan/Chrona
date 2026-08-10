@@ -530,6 +530,10 @@ export const migrations = [
   {
     version: 11,
     name: 'medication_list_sharing',
+    legacyAppliedDefinitions: [{
+      name: 'medication_list_sharing',
+      checksum: '6e84a78f02cd5e537f88463587efa2273fe7f97d1faaaeb7e1d7412cf35c0b94',
+    }],
     up: `
       CREATE TABLE IF NOT EXISTS medication_lists (
         owner_user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -563,6 +567,21 @@ export const migrations = [
         ON medication_list_shares (grantee_user_id, owner_user_id)
         WHERE revoked_at IS NULL;
 
+      ALTER TABLE share_invites DROP CONSTRAINT IF EXISTS share_invites_resource_type_check;
+      ALTER TABLE share_invites ADD CONSTRAINT share_invites_resource_type_check
+        CHECK (resource_type = 'medication_list');
+
+      ALTER TABLE collaboration_events
+        DROP CONSTRAINT IF EXISTS collaboration_events_resource_type_check;
+      ALTER TABLE collaboration_events
+        ADD CONSTRAINT collaboration_events_resource_type_check
+        CHECK (resource_type IN ('medication', 'medication_list'));
+    `,
+  },
+  {
+    version: 12,
+    name: 'buddy_streak_resource_constraints',
+    up: `
       ALTER TABLE share_invites DROP CONSTRAINT IF EXISTS share_invites_resource_type_check;
       ALTER TABLE share_invites ADD CONSTRAINT share_invites_resource_type_check
         CHECK (resource_type IN ('buddy_streak', 'medication', 'medication_list'));

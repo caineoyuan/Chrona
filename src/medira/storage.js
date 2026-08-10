@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, isLocalPreview } from '../auth.jsx'
 import { sharingEnabled } from '../feature-flags.js'
+import {
+  migrateStorageValue,
+  parseStoredJson,
+  readStorageValue,
+  writeStorageJson,
+  writeStorageValue,
+} from '../storage-utils.js'
 import { inventoryInteger, reminderOffsets, repairDynamicSchedule, takenRecordStatus } from './lib'
 import {
   medicationData,
@@ -153,14 +160,9 @@ function sameValue(left, right) {
 
 function loadLocalMedications() {
   try {
-    const current = localStorage.getItem(STORAGE_KEY)
-    const saved = current ?? localStorage.getItem(LEGACY_STORAGE_KEY)
-    if (current === null && saved !== null) {
-      localStorage.setItem(STORAGE_KEY, saved)
-      localStorage.removeItem(LEGACY_STORAGE_KEY)
-    }
-    const medications = saved ? JSON.parse(saved).map(normalizeMedication) : []
-    if (!isLocalPreview || localStorage.getItem(PREVIEW_SEED_KEY)) return medications
+    const saved = migrateStorageValue(STORAGE_KEY, LEGACY_STORAGE_KEY)
+    const medications = parseStoredJson(saved, []).map(normalizeMedication)
+    if (!isLocalPreview || readStorageValue(PREVIEW_SEED_KEY)) return medications
 
     const createdAt = new Date().toISOString()
     const existingIds = new Set(medications.map((medication) => medication.id))
@@ -174,8 +176,8 @@ function loadLocalMedications() {
         pausePeriods: [],
       }))
     const seededMedications = [...medications, ...previewMedications]
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(seededMedications))
-    localStorage.setItem(PREVIEW_SEED_KEY, '1')
+    writeStorageJson(STORAGE_KEY, seededMedications)
+    writeStorageValue(PREVIEW_SEED_KEY, '1')
     return seededMedications
   } catch {
     return []
@@ -311,14 +313,9 @@ export function useMedications() {
 
   useEffect(() => {
     if (!loaded) return
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify(privateMedicationSnapshot(medications)),
-      )
-    } catch (error) {
-      console.error('Could not save private medication cache:', error)
-    }
+    writeStorageJson(STORAGE_KEY, privateMedicationSnapshot(medications), {
+      onError: (error) => console.error('Could not save private medication cache:', error),
+    })
   }, [loaded, medications])
 
   const syncChange = useCallback(async (previous, next, generation) => {

@@ -1,30 +1,10 @@
 :root {
-  --bg: #131313;
-  --bg-2: #1c1c1c;
-  --card: #1e1e1e;
-  --card-2: #272727;
-  --line: #353535;
-  --text: #f0f0f0;
-  --muted: #9a9a9a;
   --accent: #01eeb8;
   --accent-ink: #01eeb8;
-  --accent-2: #1db954;
-  --purple: #7b68ee;
-  --gold: #ffc72c;
   --gold-glow: rgba(250,204,21,.45);
   --action-teal: #59b899;
   --action-icon: #f0f0ed;
   --card-edge: #57f6da;
-  --button-neutral: #34383a;
-  --button-neutral-border: #51585a;
-  --button-neutral-text: #f0f2f1;
-  --serif: 'DM Serif Text', Georgia, serif;
-  --sans: 'DM Sans', system-ui, -apple-system, sans-serif;
-  --font-xs: 9.333px;
-  --font-sm: 14px;
-  --font-md: 21px;
-  --font-lg: 31.5px;
-  --font-xl: 47.25px;
   color: var(--text);
   background: var(--bg);
   font-family: var(--sans);
@@ -33,23 +13,12 @@
 }
 
 .medira-shell.light {
-  --bg: #f7f7f4;
-  --bg-2: #e5e5e1;
   --card: #eeeeea;
   --card-2: #e7e7e2;
-  --line: #c9c9c3;
-  --text: #343331;
-  --muted: #5f5e5a;
   --accent: var(--action-teal);
   --accent-ink: #006b56;
-  --accent-2: #26aa55;
-  --purple: #8e82fe;
-  --gold: #ffbf00;
   --gold-glow: rgba(255,191,0,.45);
   --card-edge: var(--action-teal);
-  --button-neutral: #deded9;
-  --button-neutral-border: #c2c2bb;
-  --button-neutral-text: #343331;
   color: var(--text);
   background: var(--bg);
 }
@@ -212,7 +181,6 @@ button { cursor: pointer; }
 }
 .brand-mark { width: 37px; height: 37px; display: grid; place-items: center; }
 .brand-mark .medication-icon { width: 31px; height: 31px; }
-.brand-name, .page-title, .card-title, .section-title, .modal-title { font-family: var(--serif); font-style: italic; font-weight: 400; }
 .brand-name { font-size: var(--font-md); }
 .notify-btn { margin-left: auto; display: flex; gap: 7px; align-items: center; border: 1px solid var(--line); color: var(--text); background: var(--bg-2); border-radius: 999px; padding: 8px 16px; font-size: var(--font-sm); }
 .icon-btn.topbar-action { margin-left: auto; }
@@ -257,10 +225,9 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .tomorrow-head > span { color: var(--muted); font-size: var(--font-xs); text-align: right; }
 .add-btn, .text-btn { display: inline-flex; align-items: center; gap: 5px; border: 0; background: none; color: var(--accent-ink); font-weight: 600; font-size: var(--font-sm); padding: 8px; }
 
-.card-wrap { position: relative; display: flow-root; background: var(--card-edge); border-radius: 2px; padding: 0; }
-.card-wrap > .card { width: calc(100% - 4px); margin-bottom: 4px; }
+.card-wrap { display: flow-root; background: var(--card-edge); }
 .card-wrap.purple, .card-wrap.paused { background: var(--card-edge); }
-.card { position: relative; z-index: 1; background: linear-gradient(160deg, var(--card), var(--card-2)); border: 1px solid var(--line); border-radius: 2px; padding: 16px; }
+.card { padding: 16px; }
 .dose-list { --dose-list-gutter: 16px; padding: 0 var(--dose-list-gutter); }
 .dose-swipe-wrap { position: relative; overflow: hidden; margin-inline: calc(-1 * var(--dose-list-gutter)); }
 .dose-skip-fill { position: absolute; inset: 0; z-index: 0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 16px 24px; color: white; background: var(--accent); pointer-events: none; }
@@ -354,13 +321,13 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .med-card-head { display: flex; justify-content: space-between; }
 .med-symbol { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; background: rgba(1,238,184,.12); color: var(--accent-ink); }
 .medication-actions { display: flex; gap: 6px; }
-.icon-btn { --icon-button-background: var(--button-neutral); background: var(--button-neutral); border: 1px solid var(--button-neutral-border); color: var(--button-neutral-text); width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
+.icon-btn { width: 36px; height: 36px; }
 .icon-btn.small { width: 31px; height: 31px; }
 .icon-btn.add-medication-btn { color: var(--button-neutral-text); background: var(--button-neutral); border-color: var(--button-neutral-border); }
 .icon-btn.search-icon-btn { width: 40px; height: 40px; border-radius: 3px; }
 .icon-btn.add-time-btn { margin-top: 8px; width: 32px; height: 32px; color: var(--button-neutral-text); border-color: var(--button-neutral-border); border-style: dashed; }
 .icon-btn.resume { color: var(--accent-2); }
-.icon-btn.danger:hover { color: #ff7a7a; border-color: #713535; }
+.icon-btn.danger:hover { color: var(--danger); border-color: #713535; }
 .med-card .card-title { font-size: var(--font-md); margin: 18px 0 1px; }
 .med-name-row { display: flex; align-items: center; gap: 8px; }
 .paused-label { color: var(--muted); font-size: var(--font-sm); font-weight: 600; }
@@ -432,11 +399,11 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .icon-credit:hover { color: var(--muted); }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; background: rgba(0,0,0,.72); backdrop-filter: blur(5px); overflow-y: auto; }
-.modal { width: min(480px, 100%); max-height: calc(100vh - 36px); overflow-y: auto; overscroll-behavior-y: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; background: linear-gradient(160deg, var(--card), var(--card-2)); border: 1px solid var(--line); border-bottom: 4px solid var(--accent); padding: 24px; box-shadow: 0 24px 80px rgba(0,0,0,.55); }
+.modal { width: min(480px, 100%); max-height: calc(100vh - 36px); overflow-y: auto; overscroll-behavior-y: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; border-bottom: 4px solid var(--accent); padding: 24px; box-shadow: 0 24px 80px rgba(0,0,0,.55); }
 .modal.delete-confirm-modal { width: 100%; max-width: 380px; max-height: none; overflow: visible; border-bottom: 1px solid var(--line); border-radius: 2px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
 .delete-confirm-modal .modal-title { font-size: var(--font-md); margin-bottom: 8px; }
 .modal-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
-.modal-title { margin: 0; font-size: var(--font-lg); }
+.modal-title { font-size: var(--font-lg); }
 .medication-form { width: min(560px, 100%); max-height: min(820px, calc(100vh - 36px)); padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 .medication-form .modal-head { flex: none; margin: 0; padding: 24px 24px 16px; border-bottom: 1px solid var(--line); }
 .modal-scroll { min-height: 0; padding: 16px 24px 8px; overflow-y: auto; overscroll-behavior-y: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; scrollbar-color: #555 transparent; }

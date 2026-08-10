@@ -2,6 +2,8 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import { AuthProvider } from './auth.jsx'
+import './styles/paper-tokens.css'
+import './styles/paper-primitives.css'
 import './index.css'
 import './components/paper-buttons.css'
 

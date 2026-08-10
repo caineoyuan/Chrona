@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { migrations, runMigrations } from '../server/migrations.js'
+import { migrationChecksum, migrations, runMigrations } from '../server/migrations.js'
 
 function fakePool(appliedRows = [], failSql = null) {
   const calls = []
@@ -25,7 +25,7 @@ function fakePool(appliedRows = [], failSql = null) {
 }
 
 test('migrations are ordered and contain the planned sharing schema', () => {
-  assert.deepEqual(migrations.map(({ version }) => version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+  assert.deepEqual(migrations.map(({ version }) => version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
   const sql = migrations.map(({ up }) => up).join('\n')
   for (const table of [
     'user_identities',
@@ -126,6 +126,39 @@ test('runner accepts an explicitly known prerelease migration definition', async
   await runMigrations(applied.pool, [migration])
 
   assert.equal(applied.calls.some(({ text }) => text === 'BEGIN'), false)
+})
+
+test('migration 11 preserves its production checksum and accepts the short-lived altered definition', async () => {
+  const migration = migrations.find(({ version }) => version === 11)
+  const nextMigration = migrations.find(({ version }) => version === 12)
+
+  assert.equal(
+    migrationChecksum(migration),
+    'd818dd6778a130966fb187a467baed7d90625ff139d79950711d352598da6eab',
+  )
+  assert.deepEqual(migration.legacyAppliedDefinitions, [{
+    name: 'medication_list_sharing',
+    checksum: '6e84a78f02cd5e537f88463587efa2273fe7f97d1faaaeb7e1d7412cf35c0b94',
+  }])
+  assert.equal(
+    nextMigration.name,
+    'buddy_streak_resource_constraints',
+  )
+
+  for (const checksum of [
+    migrationChecksum(migration),
+    migration.legacyAppliedDefinitions[0].checksum,
+  ]) {
+    const applied = fakePool([{
+      version: 11,
+      name: 'medication_list_sharing',
+      checksum,
+    }])
+    await runMigrations(applied.pool, [migration, nextMigration])
+    const insert = applied.calls.find(({ text }) =>
+      text.startsWith('INSERT INTO schema_migrations'))
+    assert.equal(insert.params[0], 12)
+  }
 })
 
 test('runner rejects checksum drift and unknown applied migrations before writes', async () => {
