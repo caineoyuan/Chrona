@@ -1492,11 +1492,20 @@ function App({ colorScheme = 'dark' }) {
   const sharing = useMedicationSharing(sharingEnabled)
   const medicationProfiles = sharing.profiles
   const ownProfile = medicationProfiles.find((profile) => profile.role === 'owner')
+  const fallbackOwnerProfile = {
+    ownerUserId: '',
+    username: 'You',
+    role: 'owner',
+    canViewHistory: true,
+  }
   const selectedProfile = medicationProfiles.find(
     (profile) => profile.ownerUserId === selectedProfileId,
-  ) || ownProfile
+  ) || ownProfile || fallbackOwnerProfile
   const visibleMedications = useMemo(() => {
-    if (!selectedProfile) return medications
+    if (!selectedProfile.ownerUserId) {
+      return medications.filter((medication) =>
+        medicationPermissions(medication).role === 'owner')
+    }
     return medications.filter((medication) => {
       const ownerUserId = medicationPermissions(medication).ownerUserId
       return ownerUserId
@@ -1509,10 +1518,11 @@ function App({ colorScheme = 'dark' }) {
   )), [medications])
 
   useEffect(() => {
+    if (sharing.status !== 'ready') return
     if (selectedProfile && selectedProfile.ownerUserId !== selectedProfileId) {
       setSelectedProfileId(selectedProfile.ownerUserId)
     }
-  }, [selectedProfile, selectedProfileId])
+  }, [selectedProfile, selectedProfileId, sharing.status])
 
   useEffect(() => {
     if (!medicationsLoaded || !pendingViewingMedicationId.current) return
