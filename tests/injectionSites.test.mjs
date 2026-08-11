@@ -322,7 +322,6 @@ test('keeps the latest overdue every-N-days dose actionable', () => {
 })
 
 test('reconciles a legacy weekly taken record with its same-day occurrence', () => {
-  const scheduledAt = new Date('2026-08-10T13:00:00')
   const takenAt = new Date('2026-08-10T17:58:00')
   const med = {
     ...medication({
@@ -342,11 +341,11 @@ test('reconciles a legacy weekly taken record with its same-day occurrence', () 
 
   const doses = getDosesForDay([med], new Date('2026-08-10T20:00:00'))
   assert.equal(doses.length, 1)
-  assert.equal(doses[0].scheduledAt.toISOString(), scheduledAt.toISOString())
+  assert.equal(doses[0].scheduledAt.toISOString(), takenAt.toISOString())
   assert.equal(doses[0].record.id, 'legacy-weekly')
 })
 
-test('reconciles a late every-N-days record and suppresses only the too-close occurrence', () => {
+test('reconciles a late every-N-days record and anchors the next date', () => {
   const takenAt = new Date('2026-08-10T18:01:00')
   const med = {
     ...medication({
@@ -500,6 +499,28 @@ test('re-anchors a 12-hour schedule to the exact taken time', () => {
   assert.equal(next.scheduledAt.getDate(), 6)
 })
 
+test('anchors hourly recurrence to latest history even when its stored anchor is stale', () => {
+  const med = {
+    ...medication({
+      type: 'interval',
+      intervalHours: 3,
+      weekdays: [],
+      anchorAt: '2026-08-10T09:00:00',
+      changes: [],
+    }, ['09:00', '12:00', '15:00']),
+    history: [{
+      id: 'latest-hourly',
+      scheduledAt: '2026-08-10T09:00:00',
+      takenAt: '2026-08-10T10:17:00',
+      status: 'late',
+    }],
+  }
+  const next = getNextDose([med], new Date('2026-08-10T10:18:00'))
+
+  assert.equal(next.scheduledAt.getHours(), 13)
+  assert.equal(next.scheduledAt.getMinutes(), 17)
+})
+
 test('moves a daily schedule to the late taken time', () => {
   const med = medication({ type: 'daily', intervalHours: 24, weekdays: [], anchorAt: null })
   const updated = applyTaken(med, new Date('2026-08-06T11:00:00'), new Date('2026-08-06T15:00:00'))
@@ -625,6 +646,74 @@ test('keeps weekly and twice-weekly schedules at their set time', () => {
   assert.equal(twiceNext.scheduledAt.getHours(), 11)
 })
 
+test('anchors weekly date gaps to the latest taken owner date', () => {
+  const weekly = medication({
+    type: 'weekly',
+    intervalHours: 168,
+    weekdays: [1],
+    anchorAt: null,
+    changes: [],
+  }, ['13:00'])
+  const updated = applyTaken(
+    weekly,
+    new Date('2026-08-10T13:00:00'),
+    new Date('2026-08-11T18:00:00'),
+  )
+  const next = getNextDose([updated], new Date('2026-08-11T18:01:00'))
+
+  assert.equal(next.scheduledAt.getDay(), 2)
+  assert.equal(next.scheduledAt.getDate(), 18)
+  assert.equal(next.scheduledAt.getHours(), 13)
+})
+
+test('preserves weekly gap pattern after a late twice-weekly dose', () => {
+  const twiceWeekly = medication({
+    type: 'weekly',
+    intervalHours: 84,
+    weekdays: [0, 4],
+    anchorAt: null,
+    changes: [],
+  }, ['13:00'])
+  const updated = applyTaken(
+    twiceWeekly,
+    new Date('2026-08-13T13:00:00'),
+    new Date('2026-08-14T18:00:00'),
+  )
+  const next = getNextDose([updated], new Date('2026-08-14T18:01:00'))
+
+  assert.equal(next.scheduledAt.getDay(), 1)
+  assert.equal(next.scheduledAt.getDate(), 17)
+  assert.equal(next.scheduledAt.getHours(), 13)
+})
+
+test('generates weekly recurrence in owner timezone before viewer conversion', () => {
+  const weekly = {
+    ...medication({
+      type: 'weekly',
+      intervalHours: 168,
+      weekdays: [1],
+      anchorAt: null,
+      changes: [],
+    }, ['13:00']),
+    history: [{
+      id: 'owner-weekly',
+      scheduledAt: '2026-08-10T17:00:00.000Z',
+      takenAt: '2026-08-11T05:00:00.000Z',
+      status: 'late',
+    }],
+    resourceAccess: {
+      role: 'viewer',
+      ownerUserId: 'eastern-owner',
+      ownerTimezone: 'America/New_York',
+      canViewHistory: true,
+      canViewSchedule: true,
+    },
+  }
+  const next = getNextDose([weekly], new Date('2026-08-11T05:01:00.000Z'))
+
+  assert.equal(next.scheduledAt.toISOString(), '2026-08-18T17:00:00.000Z')
+})
+
 test('undoes a taken dose and its automatic daily shift', () => {
   const med = medication({ type: 'daily', intervalHours: 24, weekdays: [], anchorAt: null, changes: [] })
   const scheduledAt = new Date('2026-08-06T11:00:00')
@@ -724,7 +813,7 @@ test('anchors every-days dates to a manual dose while preserving clock time', ()
   assert.equal(next.scheduledAt.getMinutes(), 0)
 })
 
-test('keeps weekly schedules fixed when a manual calendar dose is added', () => {
+test('anchors weekly dates to a manual dose while preserving clock time', () => {
   const med = medication({
     type: 'weekly',
     intervalHours: 168,
@@ -736,7 +825,8 @@ test('keeps weekly schedules fixed when a manual calendar dose is added', () => 
   const next = getNextDose([updated], new Date('2026-08-07T14:21:00'))
 
   assert.deepEqual(updated.times, ['09:00'])
-  assert.equal(next.scheduledAt.getDay(), 4)
+  assert.equal(next.scheduledAt.getDay(), 5)
+  assert.equal(next.scheduledAt.getDate(), 14)
   assert.equal(next.scheduledAt.getHours(), 9)
   assert.equal(next.scheduledAt.getMinutes(), 0)
 })

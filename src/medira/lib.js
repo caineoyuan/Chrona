@@ -299,6 +299,34 @@ function scheduleForCalendarDate(medication, dateKey, timeZone) {
   )
 }
 
+function weeklyDateAfterLatestTaken(schedule, latestTaken, dateKey, timeZone) {
+  const weekdays = [...new Set(schedule.weekdays)].sort((left, right) => left - right)
+  if (!weekdays.length) return false
+  const takenKey = dateKeyInTimeZone(new Date(latestTaken.takenAt), timeZone)
+  if (dateKey <= takenKey) return false
+  const source = new Date(
+    latestTaken.originalScheduledAt || latestTaken.scheduledAt || latestTaken.takenAt,
+  )
+  const sourceWeekday = new Date(
+    dateKeyValue(dateKeyInTimeZone(source, timeZone)),
+  ).getUTCDay()
+  let phase = weekdays.indexOf(sourceWeekday)
+  if (phase < 0) {
+    phase = weekdays.reduce((nearest, weekday, index) => {
+      const distance = (sourceWeekday - weekday + 7) % 7
+      return distance < nearest.distance ? { index, distance } : nearest
+    }, { index: 0, distance: 7 }).index
+  }
+  let occurrenceKey = takenKey
+  while (occurrenceKey < dateKey) {
+    const nextPhase = (phase + 1) % weekdays.length
+    const gap = (weekdays[nextPhase] - weekdays[phase] + 7) % 7 || 7
+    occurrenceKey = addDateKey(occurrenceKey, gap)
+    phase = nextPhase
+  }
+  return occurrenceKey === dateKey
+}
+
 function scheduledTimesForCalendarDate(
   medication,
   dateKey,
@@ -308,13 +336,23 @@ function scheduledTimesForCalendarDate(
   const schedule = scheduleForCalendarDate(medication, dateKey, timeZone)
   if (schedule.startDate && dateKey < schedule.startDate) return []
   const weekday = new Date(dateKeyValue(dateKey)).getUTCDay()
-  if (schedule.type === 'weekly' && !schedule.weekdays.includes(weekday)) return []
+  const latestTaken = latestTakenForRegimen(medication, medications)
+  if (schedule.type === 'weekly') {
+    const latestTakenKey = latestTaken
+      ? dateKeyInTimeZone(new Date(latestTaken.takenAt), timeZone)
+      : null
+    const occurs = latestTakenKey && dateKey > latestTakenKey
+      ? weeklyDateAfterLatestTaken(schedule, latestTaken, dateKey, timeZone)
+      : !latestTakenKey || dateKey < latestTakenKey
+        ? schedule.weekdays.includes(weekday)
+        : false
+    if (!occurs) return []
+  }
   if (schedule.type === 'day-interval') {
     const originalAnchorKey = dateKeyInTimeZone(
       new Date(schedule.anchorAt || medication.createdAt),
       timeZone,
     )
-    const latestTaken = latestTakenForRegimen(medication, medications)
     const latestTakenKey = latestTaken
       ? dateKeyInTimeZone(new Date(latestTaken.takenAt), timeZone)
       : null
@@ -328,10 +366,10 @@ function scheduledTimesForCalendarDate(
     const intervalDays = Math.min(30, Math.max(2, Number(schedule.intervalDays) || 7))
     if (elapsedDays < 0 || elapsedDays % intervalDays !== 0) return []
   }
-  if (schedule.type === 'interval' && schedule.anchorAt) {
+  if (schedule.type === 'interval' && (latestTaken?.takenAt || schedule.anchorAt)) {
     const start = instantForCalendarTime(dateKey, '00:00', timeZone)
     const end = instantForCalendarTime(addDateKey(dateKey, 1), '00:00', timeZone)
-    const anchor = new Date(schedule.anchorAt)
+    const anchor = new Date(latestTaken?.takenAt || schedule.anchorAt)
     const interval = Math.max(1, Number(schedule.intervalHours) || 1) * 60 * MINUTE
     const firstIndex = Math.max(0, Math.ceil((start - anchor) / interval))
     const results = []
