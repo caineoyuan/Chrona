@@ -370,6 +370,7 @@ function scheduledTimesForCalendarDate(
     const start = instantForCalendarTime(dateKey, '00:00', timeZone)
     const end = instantForCalendarTime(addDateKey(dateKey, 1), '00:00', timeZone)
     const anchor = new Date(latestTaken?.takenAt || schedule.anchorAt)
+    anchor.setSeconds(0, 0)
     const interval = Math.max(1, Number(schedule.intervalHours) || 1) * 60 * MINUTE
     const firstIndex = Math.max(0, Math.ceil((start - anchor) / interval))
     const results = []

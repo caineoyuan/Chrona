@@ -521,6 +521,41 @@ test('anchors hourly recurrence to latest history even when its stored anchor is
   assert.equal(next.scheduledAt.getMinutes(), 17)
 })
 
+test('minute-normalizes hourly anchors without duplicating taken dose rows', () => {
+  const medications = ['Gabapentin', 'Carprofen', 'Animax Ointment'].map((name, index) => {
+    const minute = 24 + Math.min(index, 1)
+    const scheduledAt = new Date(2026, 7, 10, 10, minute)
+    const takenAt = new Date(2026, 7, 10, 10, minute, 37 + index)
+    return {
+      ...medication({
+        type: 'interval',
+        intervalHours: 12,
+        weekdays: [],
+        anchorAt: new Date(2026, 7, 10, 10).toISOString(),
+        changes: [],
+      }, ['10:00', '22:00']),
+      id: `twelve-hour-${index}`,
+      name,
+      history: [{
+        id: `morning-${index}`,
+        scheduledAt: scheduledAt.toISOString(),
+        takenAt: takenAt.toISOString(),
+        originalScheduledAt: new Date(2026, 7, 10, 10).toISOString(),
+        status: 'late',
+      }],
+    }
+  })
+
+  const doses = getDosesForDay(medications, new Date('2026-08-10T12:00:00'))
+  assert.equal(doses.length, 6)
+  for (const medication of medications) {
+    const medicationDoses = doses.filter((dose) => dose.medication.id === medication.id)
+    assert.equal(medicationDoses.length, 2)
+    assert.equal(medicationDoses.filter((dose) => dose.record?.takenAt).length, 1)
+    assert.equal(medicationDoses.filter((dose) => !dose.record).length, 1)
+  }
+})
+
 test('moves a daily schedule to the late taken time', () => {
   const med = medication({ type: 'daily', intervalHours: 24, weekdays: [], anchorAt: null })
   const updated = applyTaken(med, new Date('2026-08-06T11:00:00'), new Date('2026-08-06T15:00:00'))
