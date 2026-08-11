@@ -15,7 +15,6 @@ import {
   INJECTION_SITE_CODES,
   inventoryInteger,
   isFutureLocalDate,
-  isOccurrenceTooCloseToTakenDoses,
   isOnTime,
   localScheduleAnchor,
   medicationCalendarMonths,
@@ -220,7 +219,7 @@ test('schedules medication every N days from its anchor date', () => {
   assert.equal(next.scheduledAt.getHours(), 9)
 })
 
-test('keeps every-N-days clock time and skips an occurrence too close to a late dose', () => {
+test('anchors every-N-days dates to the latest taken date without changing clock time', () => {
   const med = medication({
     type: 'day-interval',
     intervalDays: 3,
@@ -235,7 +234,7 @@ test('keeps every-N-days clock time and skips an occurrence too close to a late 
   const next = getNextDose([updated], new Date('2026-08-04T10:31:00'))
 
   assert.deepEqual(updated.times, ['09:00'])
-  assert.equal(next.scheduledAt.getDate(), 9)
+  assert.equal(next.scheduledAt.getDate(), 7)
   assert.equal(next.scheduledAt.getHours(), 9)
   assert.equal(next.scheduledAt.getMinutes(), 0)
   assert.equal(getActionableDoses([updated], new Date('2026-08-05T10:30:00')).length, 0)
@@ -374,7 +373,7 @@ test('reconciles a late every-N-days record and suppresses only the too-close oc
   assert.equal(today[0].record.id, 'legacy-every-days')
   assert.equal(today[0].overdue, undefined)
   assert.equal(tomorrow.length, 0)
-  assert.equal(next.scheduledAt.getDate(), 14)
+  assert.equal(next.scheduledAt.getDate(), 13)
   assert.equal(next.scheduledAt.getHours(), 16)
 })
 
@@ -424,66 +423,7 @@ test('enforces every-N-days spacing across duplicate shared resource copies', ()
   assert.equal(today.length, 1)
   assert.equal(today[0].record.id, 'shared-taken-dose')
   assert.equal(tomorrow.length, 0)
-  assert.equal(next.scheduledAt.getDate(), 14)
-  assert.equal(next.scheduledAt.getHours(), 16)
-})
-
-test('rendered taken doses guard tomorrow and next dose despite malformed shared ownership metadata', () => {
-  const schedule = {
-    type: 'day-interval',
-    intervalDays: 3,
-    intervalHours: 72,
-    weekdays: [],
-    anchorAt: '2026-08-08T16:00:00',
-    changes: [],
-  }
-  const scheduledMedication = {
-    ...medication(schedule, ['16:00']),
-    id: 'scheduled-copy',
-    name: 'Estradiol Vaginal',
-    dose: '10 mcg',
-    resourceAccess: {
-      role: 'viewer',
-      ownerUserId: 'correct-owner',
-      ownerTimezone: 'America/Los_Angeles',
-    },
-  }
-  const takenAt = new Date('2026-08-10T18:01:00')
-  const renderedTakenDose = {
-    medication: {
-      ...scheduledMedication,
-      id: 'history-copy',
-      resourceAccess: {
-        ...scheduledMedication.resourceAccess,
-        ownerUserId: 'legacy-wrong-owner',
-      },
-    },
-    record: {
-      id: 'rendered-taken',
-      scheduledAt: takenAt.toISOString(),
-      takenAt: takenAt.toISOString(),
-      status: 'late',
-    },
-  }
-  const tomorrow = getDosesForDay(
-    [scheduledMedication],
-    new Date('2026-08-11T12:00:00'),
-  )[0]
-
-  assert.equal(
-    isOccurrenceTooCloseToTakenDoses(
-      tomorrow.medication,
-      tomorrow.scheduledAt,
-      [renderedTakenDose],
-    ),
-    true,
-  )
-  const next = getNextDose(
-    [scheduledMedication],
-    new Date('2026-08-10T20:00:00'),
-    [renderedTakenDose],
-  )
-  assert.equal(next.scheduledAt.getDate(), 14)
+  assert.equal(next.scheduledAt.getDate(), 13)
   assert.equal(next.scheduledAt.getHours(), 16)
 })
 
@@ -765,7 +705,7 @@ test('adds a past dose from today to history, schedule, and future recurrence', 
   assert.equal(next.scheduledAt.getMinutes(), 30)
 })
 
-test('keeps every-days schedules fixed when a manual calendar dose is added', () => {
+test('anchors every-days dates to a manual dose while preserving clock time', () => {
   const med = medication({
     type: 'day-interval',
     intervalDays: 3,
@@ -779,7 +719,7 @@ test('keeps every-days schedules fixed when a manual calendar dose is added', ()
 
   assert.equal(new Date(updated.schedule.anchorAt).getDate(), 6)
   assert.equal(new Date(updated.schedule.anchorAt).getMinutes(), 0)
-  assert.equal(next.scheduledAt.getDate(), 12)
+  assert.equal(next.scheduledAt.getDate(), 10)
   assert.equal(next.scheduledAt.getHours(), 9)
   assert.equal(next.scheduledAt.getMinutes(), 0)
 })

@@ -28,7 +28,6 @@ import {
   INJECTION_SITE_CODES,
   inventoryInteger,
   isFutureLocalDate,
-  isOccurrenceTooCloseToTakenDoses,
   isOnTime,
   localScheduleAnchor,
   medicationCalendarMonths,
@@ -1628,20 +1627,9 @@ function App({ colorScheme = 'dark' }) {
     return date
   }, [now])
   const todayDoses = useMemo(() => getActionableDoses(scheduleMedications, now), [scheduleMedications, now])
-  const takenTodayDoses = useMemo(
-    () => todayDoses.filter((dose) => dose.record?.takenAt),
-    [todayDoses],
-  )
-  const tomorrowDoses = useMemo(
-    () => getDosesForDay(scheduleMedications, tomorrow).filter((dose) =>
-      !isOccurrenceTooCloseToTakenDoses(dose.medication, dose.scheduledAt, takenTodayDoses)),
-    [scheduleMedications, takenTodayDoses, tomorrow],
-  )
+  const tomorrowDoses = useMemo(() => getDosesForDay(scheduleMedications, tomorrow), [scheduleMedications, tomorrow])
   const takenToday = todayDoses.filter((dose) => dose.record?.status === 'on-time' || dose.record?.status === 'late').length
-  const next = useMemo(
-    () => getNextDose(scheduleMedications, now, takenTodayDoses),
-    [scheduleMedications, now, takenTodayDoses],
-  )
+  const next = useMemo(() => getNextDose(scheduleMedications, now), [scheduleMedications, now])
   const reminder = useMemo(() => getNextReminder(ownMedications, now), [ownMedications, now])
   useEffect(() => {
     if (hasPushSubscription || !reminder || !('Notification' in window) || Notification.permission !== 'granted') return
