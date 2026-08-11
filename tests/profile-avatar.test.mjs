@@ -53,6 +53,7 @@ function memoryProfileQuery(initial = {}) {
     avatar_value: null,
     avatar_color: null,
     avatar_file: null,
+    avatar_data: null,
     ...initial,
   }
   const calls = []
@@ -70,6 +71,7 @@ function memoryProfileQuery(initial = {}) {
             avatar_value: null,
             avatar_color: null,
             avatar_file: params[0],
+            avatar_data: params[1],
           }
         } else if (text.includes('avatar_kind = NULL')) {
           row = {
@@ -78,6 +80,7 @@ function memoryProfileQuery(initial = {}) {
             avatar_value: null,
             avatar_color: null,
             avatar_file: null,
+            avatar_data: null,
           }
         } else {
           row = {
@@ -86,12 +89,17 @@ function memoryProfileQuery(initial = {}) {
             avatar_value: params[1],
             avatar_color: params[2],
             avatar_file: null,
+            avatar_data: null,
           }
         }
         return { rows: [{ ...row, replaced_avatar_file }] }
       }
       if (text.includes('SELECT avatar_file FROM users')) {
-        return { rows: row.avatar_kind === 'upload' ? [{ avatar_file: row.avatar_file }] : [] }
+        return {
+          rows: row.avatar_kind === 'upload'
+            ? [{ avatar_file: row.avatar_file, avatar_data: row.avatar_data }]
+            : [],
+        }
       }
       return { rows: [{ ...row }] }
     },
@@ -383,6 +391,7 @@ test('stored avatar reads stay authenticated and expose only normalized image by
     headers: authHeaders({ 'Content-Type': 'image/jpeg' }),
     body: image,
   })
+  await fs.rm(path.join(directory, store.current().avatar_file))
 
   const unauthorized = await request(router, '/avatar/21')
   assert.equal(unauthorized.status, 401)

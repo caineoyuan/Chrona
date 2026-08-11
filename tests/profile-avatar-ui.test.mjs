@@ -38,9 +38,10 @@ test('fixed-circle crop geometry stays inside the source image', () => {
 })
 
 test('settings modal expands profile icon editing with canonical round actions', async () => {
-  const [app, profile, auth, css] = await Promise.all([
+  const [app, profile, avatar, auth, css] = await Promise.all([
     readFile(new URL('../src/App.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../src/components/Profile.jsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/components/Avatar.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../src/auth.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../src/index.css', import.meta.url), 'utf8'),
   ])
@@ -58,6 +59,8 @@ test('settings modal expands profile icon editing with canonical round actions',
   assert.doesNotMatch(profile, /Bundled icons|avatar-icon-grid/)
   assert.match(profile, /className="modal profile-modal"/)
   assert.match(profile, /className="profile-avatar-edit-trigger"/)
+  assert.match(avatar, /onError=\{\(\) => setFailedUrl\(avatar\.url\)\}/)
+  assert.match(avatar, /resolvedAvatar\(\{ \.\.\.user, avatar: null \}\)/)
   assert.match(profile, /aria-expanded=\{avatarExpanded\}/)
   assert.match(profile, /avatarExpanded && <div id="profile-icon-settings">/)
   assert.match(profile, /Edit profile icon/)

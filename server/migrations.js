@@ -593,6 +593,13 @@ export const migrations = [
         CHECK (resource_type IN ('buddy_streak', 'medication', 'medication_list'));
     `,
   },
+  {
+    version: 13,
+    name: 'durable_profile_avatar_data',
+    up: `
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data BYTEA;
+    `,
+  },
 ]
 
 export function migrationChecksum(migration) {

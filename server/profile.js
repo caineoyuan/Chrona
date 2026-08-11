@@ -249,7 +249,7 @@ export function createProfileRouter({
          ), updated AS (
            UPDATE users AS target
            SET avatar_kind = $1, avatar_value = $2, avatar_color = $3,
-               avatar_file = NULL, updated_at = now()
+               avatar_file = NULL, avatar_data = NULL, updated_at = now()
            FROM previous
            WHERE target.id = $4 AND target.status = 'active'
            RETURNING target.id, target.username, target.display_username,
@@ -293,20 +293,20 @@ export function createProfileRouter({
 
         const result = await queryFn(
           `WITH previous AS (
-             SELECT avatar_file FROM users WHERE id = $2 AND status = 'active'
+             SELECT avatar_file FROM users WHERE id = $3 AND status = 'active'
            ), updated AS (
              UPDATE users AS target
              SET avatar_kind = 'upload', avatar_value = NULL, avatar_color = NULL,
-                 avatar_file = $1, updated_at = now()
+                 avatar_file = $1, avatar_data = $2, updated_at = now()
              FROM previous
-             WHERE target.id = $2 AND target.status = 'active'
+             WHERE target.id = $3 AND target.status = 'active'
              RETURNING target.id, target.username, target.display_username,
                        target.timezone, target.avatar_kind, target.avatar_value,
                        target.avatar_color, target.avatar_file
            )
            SELECT updated.*, previous.avatar_file AS replaced_avatar_file
            FROM updated CROSS JOIN previous`,
-          [filename, req.userId],
+          [filename, normalized, req.userId],
         )
         const user = result.rows[0]
         if (!user) {
@@ -333,7 +333,7 @@ export function createProfileRouter({
          ), updated AS (
            UPDATE users AS target
            SET avatar_kind = NULL, avatar_value = NULL, avatar_color = NULL,
-               avatar_file = NULL, updated_at = now()
+               avatar_file = NULL, avatar_data = NULL, updated_at = now()
            FROM previous
            WHERE target.id = $1 AND target.status = 'active'
            RETURNING target.id, target.username, target.display_username,
@@ -359,11 +359,17 @@ export function createProfileRouter({
     }
     try {
       const result = await queryFn(
-        `SELECT avatar_file FROM users
+        `SELECT avatar_file, avatar_data FROM users
          WHERE id = $1 AND status = 'active' AND avatar_kind = 'upload'`,
         [Number(req.params.userId)],
       )
-      const target = storedAvatarPath(uploadDirectory, result.rows[0]?.avatar_file)
+      const stored = result.rows[0]
+      if (stored?.avatar_data) {
+        res.set('Cache-Control', 'private, max-age=3600')
+        res.type('image/webp')
+        return res.send(stored.avatar_data)
+      }
+      const target = storedAvatarPath(uploadDirectory, stored?.avatar_file)
       if (!target) return res.status(404).json({ error: 'Avatar not found.' })
       await fs.access(target)
       res.set('Cache-Control', 'private, max-age=3600')

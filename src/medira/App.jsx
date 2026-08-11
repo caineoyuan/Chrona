@@ -884,6 +884,11 @@ function DoseCard({ dose, onTaken, onSkip, onUndo, onTimeChange, onOpen }) {
         <div className="dose-info">
           <strong>{dose.medication.name}</strong>
           {isSkipped && <span className="skipped-at">Skipped {new Date(dose.record.skippedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>}
+          {dose.overdue && (
+            <span className="overdue-origin">
+              Due {dose.scheduledAt.toLocaleDateString([], { month: 'short', day: 'numeric' })}
+            </span>
+          )}
           <span>{dose.medication.dose || 'Dose not set'} · {frequencyLabel(dose.medication)}</span>
         </div>
         <div className="dose-action-column">

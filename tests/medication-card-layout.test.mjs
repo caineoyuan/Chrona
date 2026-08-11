@@ -17,6 +17,9 @@ test('medication list cards use their full width and show concise schedule detai
   assert.match(card, /className="paused-label"/)
   assert.match(card, /<span>Frequency<strong>\{permissions\.canViewSchedule \? scheduleLabels\(med\)\[0\] : 'Not shared'\}<\/strong><\/span>/)
   assert.doesNotMatch(card, /How to take|Doses taken|Starts /)
+  assert.match(app, /dose\.overdue && \(/)
+  assert.match(app, /className="overdue-origin"/)
+  assert.match(css, /\.dose-info span\.overdue-origin \{ color: var\(--gold\); font-weight: 600; \}/)
   assert.match(
     css,
     /\.med-grid \.med-card \{[^}]*grid-template-columns: 36px minmax\(0, 1fr\);[^}]*column-gap: 8px;[^}]*padding-block: 16px 24px;/,
