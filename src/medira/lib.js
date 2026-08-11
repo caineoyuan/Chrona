@@ -224,7 +224,31 @@ function doseKey(medicationId, scheduledAt) {
 }
 
 function recordFor(medication, scheduledAt) {
-  return medication.history.find((entry) => entry.scheduledAt === scheduledAt.toISOString())
+  const timestamp = scheduledAt.toISOString()
+  const exact = medication.history.find((entry) =>
+    entry.scheduledAt === timestamp || entry.originalScheduledAt === timestamp)
+  if (exact) return exact
+  if (isDoseRelativeSchedule(scheduleFor(medication))) return null
+
+  const ownerTimeZone = medication.resourceAccess?.ownerTimezone
+  const occurrenceDate = dateKeyInTimeZone(scheduledAt, ownerTimeZone)
+  return medication.history
+    .filter((entry) => !entry.originalScheduledAt)
+    .map((entry) => ({
+      entry,
+      displayAt: new Date(entry.takenAt || entry.skippedAt || entry.scheduledAt),
+    }))
+    .filter(({ displayAt }) => !Number.isNaN(displayAt.getTime()))
+    .filter(({ displayAt }) => {
+      if (dateKeyInTimeZone(displayAt, ownerTimeZone) === occurrenceDate) return true
+      if (displayAt < scheduledAt) return false
+      return scheduledOccurrencesBetween(
+        medication,
+        new Date(scheduledAt.getTime() + 1),
+        new Date(displayAt.getTime() + 1),
+      ).length === 0
+    })
+    .sort((left, right) => left.displayAt - right.displayAt)[0]?.entry || null
 }
 
 function nearestSlotIndex(medication, scheduledAt) {
@@ -309,6 +333,21 @@ function scheduledTimesForCalendarDate(medication, dateKey, timeZone) {
   }))
 }
 
+function isEveryDaysOccurrenceTooCloseToTakenDose(medication, scheduledAt) {
+  const ownerTimeZone = medication.resourceAccess?.ownerTimezone
+  const dateKey = dateKeyInTimeZone(scheduledAt, ownerTimeZone)
+  const schedule = scheduleForCalendarDate(medication, dateKey, ownerTimeZone)
+  if (schedule.type !== 'day-interval') return false
+  const intervalDays = Math.min(30, Math.max(2, Number(schedule.intervalDays) || 7))
+  const scheduledDay = dateKeyValue(dateKey)
+  return medication.history.some((record) => {
+    if (!record.takenAt) return false
+    const takenDay = dateKeyValue(dateKeyInTimeZone(new Date(record.takenAt), ownerTimeZone))
+    const elapsedDays = Math.round((scheduledDay - takenDay) / DAY)
+    return elapsedDays > 0 && elapsedDays < intervalDays
+  })
+}
+
 function scheduledOccurrencesBetween(medication, startValue, endValue) {
   const start = new Date(startValue)
   const end = new Date(endValue)
@@ -325,7 +364,8 @@ function scheduledOccurrencesBetween(medication, startValue, endValue) {
       scheduledAt >= start &&
       scheduledAt < end &&
       scheduledAt >= createdAt &&
-      isActiveAt(medication, scheduledAt))
+      isActiveAt(medication, scheduledAt) &&
+      !isEveryDaysOccurrenceTooCloseToTakenDose(medication, scheduledAt))
     .filter(({ scheduledAt }) => {
       const timestamp = scheduledAt.toISOString()
       return !medication.history.some((record) =>

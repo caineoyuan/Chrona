@@ -219,7 +219,7 @@ test('schedules medication every N days from its anchor date', () => {
   assert.equal(next.scheduledAt.getHours(), 9)
 })
 
-test('keeps every-N-days doses at their configured time after a late dose', () => {
+test('keeps every-N-days clock time and skips an occurrence too close to a late dose', () => {
   const med = medication({
     type: 'day-interval',
     intervalDays: 3,
@@ -234,7 +234,7 @@ test('keeps every-N-days doses at their configured time after a late dose', () =
   const next = getNextDose([updated], new Date('2026-08-04T10:31:00'))
 
   assert.deepEqual(updated.times, ['09:00'])
-  assert.equal(next.scheduledAt.getDate(), 6)
+  assert.equal(next.scheduledAt.getDate(), 9)
   assert.equal(next.scheduledAt.getHours(), 9)
   assert.equal(next.scheduledAt.getMinutes(), 0)
   assert.equal(getActionableDoses([updated], new Date('2026-08-05T10:30:00')).length, 0)
@@ -319,6 +319,62 @@ test('keeps the latest overdue every-N-days dose actionable', () => {
   assert.equal(doses.length, 1)
   assert.equal(doses[0].overdue, true)
   assert.equal(doses[0].scheduledAt.getDate(), 3)
+})
+
+test('reconciles a legacy weekly taken record with its same-day occurrence', () => {
+  const scheduledAt = new Date('2026-08-10T13:00:00')
+  const takenAt = new Date('2026-08-10T17:58:00')
+  const med = {
+    ...medication({
+      type: 'weekly',
+      intervalHours: 168,
+      weekdays: [1],
+      anchorAt: null,
+      changes: [],
+    }, ['13:00']),
+    history: [{
+      id: 'legacy-weekly',
+      scheduledAt: takenAt.toISOString(),
+      takenAt: takenAt.toISOString(),
+      status: 'late',
+    }],
+  }
+
+  const doses = getDosesForDay([med], new Date('2026-08-10T20:00:00'))
+  assert.equal(doses.length, 1)
+  assert.equal(doses[0].scheduledAt.toISOString(), scheduledAt.toISOString())
+  assert.equal(doses[0].record.id, 'legacy-weekly')
+})
+
+test('reconciles a late every-N-days record and suppresses only the too-close occurrence', () => {
+  const takenAt = new Date('2026-08-10T18:01:00')
+  const med = {
+    ...medication({
+      type: 'day-interval',
+      intervalDays: 3,
+      intervalHours: 72,
+      weekdays: [],
+      anchorAt: '2026-08-08T16:00:00',
+      changes: [],
+    }, ['16:00']),
+    history: [{
+      id: 'legacy-every-days',
+      scheduledAt: takenAt.toISOString(),
+      takenAt: takenAt.toISOString(),
+      status: 'late',
+    }],
+  }
+
+  const today = getActionableDoses([med], new Date('2026-08-10T20:00:00'))
+  const tomorrow = getDosesForDay([med], new Date('2026-08-11T12:00:00'))
+  const next = getNextDose([med], new Date('2026-08-10T20:00:00'))
+
+  assert.equal(today.length, 1)
+  assert.equal(today[0].record.id, 'legacy-every-days')
+  assert.equal(today[0].overdue, undefined)
+  assert.equal(tomorrow.length, 0)
+  assert.equal(next.scheduledAt.getDate(), 14)
+  assert.equal(next.scheduledAt.getHours(), 16)
 })
 
 test('keeps an overdue every-N-days occurrence distinct from the next fixed dose', () => {
@@ -613,7 +669,7 @@ test('keeps every-days schedules fixed when a manual calendar dose is added', ()
 
   assert.equal(new Date(updated.schedule.anchorAt).getDate(), 6)
   assert.equal(new Date(updated.schedule.anchorAt).getMinutes(), 0)
-  assert.equal(next.scheduledAt.getDate(), 9)
+  assert.equal(next.scheduledAt.getDate(), 12)
   assert.equal(next.scheduledAt.getHours(), 9)
   assert.equal(next.scheduledAt.getMinutes(), 0)
 })
