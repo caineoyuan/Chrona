@@ -346,13 +346,34 @@ function scheduledTimesForCalendarDate(medication, dateKey, timeZone) {
 function regimenKey(medication) {
   const schedule = scheduleFor(medication)
   const owner = medication.resourceAccess?.ownerUserId || 'owner'
+  return `${owner}|${regimenCadenceKey(medication, schedule)}`
+}
+
+function regimenCadenceKey(medication, schedule = scheduleFor(medication)) {
   return [
-    owner,
-    String(medication.name || '').trim().toLocaleLowerCase(),
-    String(medication.dose || '').trim().toLocaleLowerCase(),
+    String(medication.name || '').normalize('NFKC').trim().toLocaleLowerCase(),
+    String(medication.dose || '').normalize('NFKC').trim().toLocaleLowerCase(),
     schedule.type,
     schedule.type === 'day-interval' ? Number(schedule.intervalDays) || 7 : '',
   ].join('|')
+}
+
+export function isOccurrenceTooCloseToTakenDoses(medication, scheduledAt, doses) {
+  const schedule = scheduleFor(medication)
+  if (schedule.type !== 'day-interval') return false
+  const ownerTimeZone = medication.resourceAccess?.ownerTimezone
+  const scheduledDay = dateKeyValue(dateKeyInTimeZone(scheduledAt, ownerTimeZone))
+  const intervalDays = Math.min(30, Math.max(2, Number(schedule.intervalDays) || 7))
+  const cadenceKey = regimenCadenceKey(medication, schedule)
+  return doses.some((dose) => {
+    if (!dose.record?.takenAt ||
+        regimenCadenceKey(dose.medication) !== cadenceKey) return false
+    const takenDay = dateKeyValue(
+      dateKeyInTimeZone(new Date(dose.record.takenAt), ownerTimeZone),
+    )
+    const elapsedDays = Math.round((scheduledDay - takenDay) / DAY)
+    return elapsedDays > 0 && elapsedDays < intervalDays
+  })
 }
 
 function isEveryDaysOccurrenceTooCloseToTakenDose(
@@ -508,13 +529,15 @@ export function getRecentDoses(medications, now = new Date(), days = 7) {
   return doses.sort((a, b) => a.scheduledAt - b.scheduledAt)
 }
 
-export function getNextDose(medications, now = new Date()) {
+export function getNextDose(medications, now = new Date(), takenDoses = []) {
   const end = new Date(now)
   end.setDate(end.getDate() + 33)
   end.setHours(0, 0, 0, 0)
   const candidates = medications.flatMap((medication) =>
     scheduledOccurrencesBetween(medication, now, end, medications)
-      .filter(({ scheduledAt }) => !recordForRegimen(medication, scheduledAt, medications))
+      .filter(({ scheduledAt }) =>
+        !recordForRegimen(medication, scheduledAt, medications) &&
+        !isOccurrenceTooCloseToTakenDoses(medication, scheduledAt, takenDoses))
       .map((occurrence) => ({ medication, ...occurrence })))
   return candidates.sort((a, b) => a.scheduledAt - b.scheduledAt)[0] || null
 }
