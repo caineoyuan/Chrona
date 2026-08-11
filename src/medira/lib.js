@@ -251,6 +251,16 @@ function recordFor(medication, scheduledAt) {
     .sort((left, right) => left.displayAt - right.displayAt)[0]?.entry || null
 }
 
+function recordForRegimen(medication, scheduledAt, medications = [medication]) {
+  const key = regimenKey(medication)
+  for (const candidate of medications) {
+    if (regimenKey(candidate) !== key) continue
+    const record = recordFor(candidate, scheduledAt)
+    if (record) return record
+  }
+  return null
+}
+
 function nearestSlotIndex(medication, scheduledAt) {
   const times = Array.isArray(medication.times) && medication.times.length
     ? medication.times
@@ -333,22 +343,46 @@ function scheduledTimesForCalendarDate(medication, dateKey, timeZone) {
   }))
 }
 
-function isEveryDaysOccurrenceTooCloseToTakenDose(medication, scheduledAt) {
+function regimenKey(medication) {
+  const schedule = scheduleFor(medication)
+  const owner = medication.resourceAccess?.ownerUserId || 'owner'
+  return [
+    owner,
+    String(medication.name || '').trim().toLocaleLowerCase(),
+    String(medication.dose || '').trim().toLocaleLowerCase(),
+    schedule.type,
+    schedule.type === 'day-interval' ? Number(schedule.intervalDays) || 7 : '',
+  ].join('|')
+}
+
+function isEveryDaysOccurrenceTooCloseToTakenDose(
+  medication,
+  scheduledAt,
+  medications = [medication],
+) {
   const ownerTimeZone = medication.resourceAccess?.ownerTimezone
   const dateKey = dateKeyInTimeZone(scheduledAt, ownerTimeZone)
   const schedule = scheduleForCalendarDate(medication, dateKey, ownerTimeZone)
   if (schedule.type !== 'day-interval') return false
   const intervalDays = Math.min(30, Math.max(2, Number(schedule.intervalDays) || 7))
   const scheduledDay = dateKeyValue(dateKey)
-  return medication.history.some((record) => {
-    if (!record.takenAt) return false
-    const takenDay = dateKeyValue(dateKeyInTimeZone(new Date(record.takenAt), ownerTimeZone))
-    const elapsedDays = Math.round((scheduledDay - takenDay) / DAY)
-    return elapsedDays > 0 && elapsedDays < intervalDays
-  })
+  const key = regimenKey(medication)
+  return medications
+    .filter((candidate) => regimenKey(candidate) === key)
+    .some((candidate) => candidate.history.some((record) => {
+      if (!record.takenAt) return false
+      const takenDay = dateKeyValue(dateKeyInTimeZone(new Date(record.takenAt), ownerTimeZone))
+      const elapsedDays = Math.round((scheduledDay - takenDay) / DAY)
+      return elapsedDays > 0 && elapsedDays < intervalDays
+    }))
 }
 
-function scheduledOccurrencesBetween(medication, startValue, endValue) {
+function scheduledOccurrencesBetween(
+  medication,
+  startValue,
+  endValue,
+  medications = [medication],
+) {
   const start = new Date(startValue)
   const end = new Date(endValue)
   const ownerTimeZone = medication.resourceAccess?.ownerTimezone
@@ -365,7 +399,7 @@ function scheduledOccurrencesBetween(medication, startValue, endValue) {
       scheduledAt < end &&
       scheduledAt >= createdAt &&
       isActiveAt(medication, scheduledAt) &&
-      !isEveryDaysOccurrenceTooCloseToTakenDose(medication, scheduledAt))
+      !isEveryDaysOccurrenceTooCloseToTakenDose(medication, scheduledAt, medications))
     .filter(({ scheduledAt }) => {
       const timestamp = scheduledAt.toISOString()
       return !medication.history.some((record) =>
@@ -376,12 +410,12 @@ function scheduledOccurrencesBetween(medication, startValue, endValue) {
     .sort((left, right) => left.scheduledAt - right.scheduledAt)
 }
 
-function scheduledTimesForDay(medication, day) {
+function scheduledTimesForDay(medication, day, medications = [medication]) {
   const start = new Date(day)
   start.setHours(0, 0, 0, 0)
   const end = new Date(start)
   end.setDate(end.getDate() + 1)
-  return scheduledOccurrencesBetween(medication, start, end)
+  return scheduledOccurrencesBetween(medication, start, end, medications)
 }
 
 export function isActiveAt(medication, value) {
@@ -395,13 +429,13 @@ export function isActiveAt(medication, value) {
 
 export function getDosesForDay(medications, day = new Date()) {
   const dayKey = localDateKey(day)
-  return medications.flatMap((medication) => {
-    const scheduled = scheduledTimesForDay(medication, day).map(({ scheduledAt, time, slotIndex }) => ({
+  const doses = medications.flatMap((medication) => {
+    const scheduled = scheduledTimesForDay(medication, day, medications).map(({ scheduledAt, time, slotIndex }) => ({
       medication,
       time,
       slotIndex,
       scheduledAt,
-      record: recordFor(medication, scheduledAt),
+      record: recordForRegimen(medication, scheduledAt, medications),
       key: doseKey(medication.id, scheduledAt),
     }))
     const scheduledRecordIds = new Set(scheduled.map((dose) => dose.record?.id).filter(Boolean))
@@ -425,6 +459,15 @@ export function getDosesForDay(medications, day = new Date()) {
     const second = new Date(b.record?.takenAt || b.record?.skippedAt || b.scheduledAt)
     return first - second
   })
+  const seen = new Set()
+  return doses.filter((dose) => {
+    const identity = dose.record?.id
+      ? `${regimenKey(dose.medication)}|record|${dose.record.id}`
+      : `${regimenKey(dose.medication)}|scheduled|${dose.scheduledAt.toISOString()}`
+    if (seen.has(identity)) return false
+    seen.add(identity)
+    return true
+  })
 }
 
 export function getActionableDoses(medications, now = new Date()) {
@@ -432,11 +475,11 @@ export function getActionableDoses(medications, now = new Date()) {
   const overdue = []
 
   for (const medication of medications) {
-    if (scheduleFor(medication).type !== 'day-interval' || scheduledTimesForDay(medication, now).length) continue
+    if (scheduleFor(medication).type !== 'day-interval' || scheduledTimesForDay(medication, now, medications).length) continue
     const start = new Date(now)
     start.setDate(start.getDate() - 30)
-    const latest = scheduledOccurrencesBetween(medication, start, now).at(-1)
-    if (!latest || recordFor(medication, latest.scheduledAt)) continue
+    const latest = scheduledOccurrencesBetween(medication, start, now, medications).at(-1)
+    if (!latest || recordForRegimen(medication, latest.scheduledAt, medications)) continue
     overdue.push({
       medication,
       ...latest,
@@ -456,10 +499,10 @@ export function getRecentDoses(medications, now = new Date(), days = 7) {
   const end = new Date(now)
   end.setHours(24, 0, 0, 0)
   const doses = medications.flatMap((medication) =>
-    scheduledOccurrencesBetween(medication, start, end).map((occurrence) => ({
+    scheduledOccurrencesBetween(medication, start, end, medications).map((occurrence) => ({
       medication,
       ...occurrence,
-      record: recordFor(medication, occurrence.scheduledAt),
+      record: recordForRegimen(medication, occurrence.scheduledAt, medications),
       key: doseKey(medication.id, occurrence.scheduledAt),
     })))
   return doses.sort((a, b) => a.scheduledAt - b.scheduledAt)
@@ -470,8 +513,8 @@ export function getNextDose(medications, now = new Date()) {
   end.setDate(end.getDate() + 33)
   end.setHours(0, 0, 0, 0)
   const candidates = medications.flatMap((medication) =>
-    scheduledOccurrencesBetween(medication, now, end)
-      .filter(({ scheduledAt }) => !recordFor(medication, scheduledAt))
+    scheduledOccurrencesBetween(medication, now, end, medications)
+      .filter(({ scheduledAt }) => !recordForRegimen(medication, scheduledAt, medications))
       .map((occurrence) => ({ medication, ...occurrence })))
   return candidates.sort((a, b) => a.scheduledAt - b.scheduledAt)[0] || null
 }
@@ -483,10 +526,10 @@ export function getNextReminder(medications, now = new Date()) {
   end.setHours(0, 0, 0, 0)
   for (const medication of medications) {
     if (medication.notifications?.enabled === false) continue
-    for (const { scheduledAt, time, slotIndex } of scheduledOccurrencesBetween(medication, now, end)) {
+    for (const { scheduledAt, time, slotIndex } of scheduledOccurrencesBetween(medication, now, end, medications)) {
       for (const advanceMinutes of reminderOffsets(medication.notifications)) {
         const alertAt = new Date(scheduledAt.getTime() - advanceMinutes * MINUTE)
-        if (alertAt >= now && !recordFor(medication, scheduledAt)) {
+        if (alertAt >= now && !recordForRegimen(medication, scheduledAt, medications)) {
           candidates.push({ medication, time, slotIndex, scheduledAt, alertAt, advanceMinutes })
         }
       }
@@ -502,10 +545,10 @@ export function getUpcomingReminders(medications, now = new Date(), days = 32) {
   end.setHours(0, 0, 0, 0)
   for (const medication of medications) {
     if (medication.notifications?.enabled === false) continue
-    for (const { scheduledAt, time } of scheduledOccurrencesBetween(medication, now, end)) {
+    for (const { scheduledAt, time } of scheduledOccurrencesBetween(medication, now, end, medications)) {
       for (const advanceMinutes of reminderOffsets(medication.notifications)) {
         const alertAt = new Date(scheduledAt.getTime() - advanceMinutes * MINUTE)
-        if (alertAt < now || recordFor(medication, scheduledAt)) continue
+        if (alertAt < now || recordForRegimen(medication, scheduledAt, medications)) continue
         const prefix = formatReminderAdvance(advanceMinutes)
         reminders.push({
           id: `${medication.id}-${scheduledAt.toISOString()}-${advanceMinutes}`,

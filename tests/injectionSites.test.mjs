@@ -377,6 +377,56 @@ test('reconciles a late every-N-days record and suppresses only the too-close oc
   assert.equal(next.scheduledAt.getHours(), 16)
 })
 
+test('enforces every-N-days spacing across duplicate shared resource copies', () => {
+  const takenAt = new Date('2026-08-10T18:01:00')
+  const schedule = {
+    type: 'day-interval',
+    intervalDays: 3,
+    intervalHours: 72,
+    weekdays: [],
+    anchorAt: '2026-08-08T16:00:00',
+    changes: [],
+  }
+  const access = {
+    role: 'viewer',
+    ownerUserId: 'shared-owner',
+    ownerTimezone: 'America/Los_Angeles',
+    canViewHistory: true,
+    canViewSchedule: true,
+  }
+  const scheduledCopy = {
+    ...medication(schedule, ['16:00']),
+    id: 'estradiol-schedule-copy',
+    name: 'Estradiol Vaginal',
+    dose: '10 mcg',
+    resourceAccess: access,
+  }
+  const historyCopy = {
+    ...medication(schedule, ['16:00']),
+    id: 'estradiol-history-copy',
+    name: 'Estradiol Vaginal',
+    dose: '10 mcg',
+    resourceAccess: access,
+    history: [{
+      id: 'shared-taken-dose',
+      scheduledAt: takenAt.toISOString(),
+      takenAt: takenAt.toISOString(),
+      status: 'late',
+    }],
+  }
+  const medications = [scheduledCopy, historyCopy]
+
+  const today = getActionableDoses(medications, new Date('2026-08-10T20:00:00'))
+  const tomorrow = getDosesForDay(medications, new Date('2026-08-11T12:00:00'))
+  const next = getNextDose(medications, new Date('2026-08-10T20:00:00'))
+
+  assert.equal(today.length, 1)
+  assert.equal(today[0].record.id, 'shared-taken-dose')
+  assert.equal(tomorrow.length, 0)
+  assert.equal(next.scheduledAt.getDate(), 14)
+  assert.equal(next.scheduledAt.getHours(), 16)
+})
+
 test('keeps an overdue every-N-days occurrence distinct from the next fixed dose', () => {
   const med = medication({
     type: 'day-interval',
