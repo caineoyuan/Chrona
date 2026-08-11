@@ -2,6 +2,16 @@ const MINUTE = 60 * 1000
 const DAY = 24 * 60 * MINUTE
 export const ON_TIME_WINDOW = 10 * MINUTE
 const MISSED_WINDOW = 30 * MINUTE
+const dateFormatters = new Map()
+const dateTimeFormatters = new Map()
+const timeFormatters = new Map()
+
+function formatterFor(cache, timeZone, options) {
+  if (!cache.has(timeZone)) {
+    cache.set(timeZone, new Intl.DateTimeFormat('en-CA', { timeZone, ...options }))
+  }
+  return cache.get(timeZone)
+}
 
 export function inventoryInteger(value, fallback = 0) {
   const number = Number(value)
@@ -92,6 +102,87 @@ function localDateKey(date) {
   ].join('-')
 }
 
+function dateKeyInTimeZone(date, timeZone) {
+  if (!timeZone) return localDateKey(date)
+  try {
+    const parts = formatterFor(dateFormatters, timeZone, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date)
+    const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]))
+    return `${values.year}-${values.month}-${values.day}`
+  } catch {
+    return localDateKey(date)
+  }
+}
+
+function dateKeyValue(dateKey) {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  return Date.UTC(year, month - 1, day)
+}
+
+function addDateKey(dateKey, days) {
+  const date = new Date(dateKeyValue(dateKey) + days * DAY)
+  return [
+    date.getUTCFullYear(),
+    String(date.getUTCMonth() + 1).padStart(2, '0'),
+    String(date.getUTCDate()).padStart(2, '0'),
+  ].join('-')
+}
+
+function zonedDateTime(dateKey, time, timeZone) {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  const [hours, minutes] = time.split(':').map(Number)
+  const desired = Date.UTC(year, month - 1, day, hours, minutes)
+  let result = new Date(desired)
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const parts = formatterFor(dateTimeFormatters, timeZone, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(result)
+    const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]))
+    const rendered = Date.UTC(
+      Number(values.year),
+      Number(values.month) - 1,
+      Number(values.day),
+      Number(values.hour),
+      Number(values.minute),
+    )
+    const correction = desired - rendered
+    if (!correction) return result
+    result = new Date(result.getTime() + correction)
+  }
+  return result
+}
+
+export function scheduleTimesForDisplay(
+  medication,
+  reference = new Date(),
+  viewerTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
+) {
+  const ownerTimeZone = medication.resourceAccess?.ownerTimezone
+  if (!ownerTimeZone || !viewerTimeZone || ownerTimeZone === viewerTimeZone) {
+    return medication.times
+  }
+  const ownerDateKey = dateKeyInTimeZone(reference, ownerTimeZone)
+  const viewerFormatter = formatterFor(timeFormatters, viewerTimeZone, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  })
+  return medication.times.map((time) => {
+    const instant = zonedDateTime(ownerDateKey, time, ownerTimeZone)
+    const parts = viewerFormatter.formatToParts(instant)
+    const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]))
+    return `${values.hour}:${values.minute}`
+  })
+}
+
 export function localScheduleAnchor(dateKey, time) {
   const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey)
   const timeMatch = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time)
@@ -161,8 +252,59 @@ function scheduleForDay(medication, day) {
   }, current)
 }
 
+function scheduledTimesForCalendarDate(medication, dateKey, timeZone) {
+  const nextMidnight = zonedDateTime(addDateKey(dateKey, 1), '00:00', timeZone)
+  const schedule = [...scheduleFor(medication).changes].reverse().reduce(
+    (config, change) =>
+      nextMidnight <= new Date(change.effectiveAt)
+        ? { ...config, ...change.previous }
+        : config,
+    { ...scheduleFor(medication), times: medication.times },
+  )
+  if (schedule.startDate && dateKey < schedule.startDate) return []
+  const weekday = new Date(dateKeyValue(dateKey)).getUTCDay()
+  if (schedule.type === 'weekly' && !schedule.weekdays.includes(weekday)) return []
+  if (schedule.type === 'day-interval') {
+    const anchor = new Date(schedule.anchorAt || medication.createdAt)
+    const anchorKey = dateKeyInTimeZone(anchor, timeZone)
+    const elapsedDays = Math.round(
+      (dateKeyValue(dateKey) - dateKeyValue(anchorKey)) / DAY,
+    )
+    const intervalDays = Math.min(30, Math.max(2, Number(schedule.intervalDays) || 7))
+    if (elapsedDays < 0 || elapsedDays % intervalDays !== 0) return []
+  }
+  const times = schedule.type === 'day-interval'
+    ? schedule.times.slice(0, 1)
+    : schedule.times
+  return times.map((time, slotIndex) => ({
+    scheduledAt: zonedDateTime(dateKey, time, timeZone),
+    time,
+    slotIndex,
+  }))
+}
+
 function scheduledTimesForDay(medication, day) {
   const schedule = scheduleForDay(medication, day)
+  const ownerTimeZone = medication.resourceAccess?.ownerTimezone
+  if (ownerTimeZone && (schedule.type !== 'interval' || !schedule.anchorAt)) {
+    const start = new Date(day)
+    start.setHours(0, 0, 0, 0)
+    const end = new Date(start.getTime() + DAY)
+    const dateKeys = new Set([
+      dateKeyInTimeZone(new Date(start.getTime() - DAY), ownerTimeZone),
+      dateKeyInTimeZone(start, ownerTimeZone),
+      dateKeyInTimeZone(new Date(end.getTime() - 1), ownerTimeZone),
+      dateKeyInTimeZone(new Date(end.getTime() + DAY), ownerTimeZone),
+    ])
+    return [...dateKeys]
+      .flatMap((dateKey) =>
+        scheduledTimesForCalendarDate(medication, dateKey, ownerTimeZone))
+      .filter(({ scheduledAt }) => scheduledAt >= start && scheduledAt < end)
+      .filter(({ scheduledAt }, index, doses) =>
+        doses.findIndex((dose) =>
+          dose.scheduledAt.getTime() === scheduledAt.getTime()) === index)
+      .sort((left, right) => left.scheduledAt - right.scheduledAt)
+  }
   if (schedule.startDate && localDateKey(day) < schedule.startDate) return []
   if (schedule.type === 'weekly' && !schedule.weekdays.includes(day.getDay())) return []
   if (schedule.type === 'day-interval') {
@@ -175,7 +317,14 @@ function scheduledTimesForDay(medication, day) {
   }
 
   if (schedule.type !== 'interval' || !schedule.anchorAt) {
-    return schedule.times.map((time, slotIndex) => ({ scheduledAt: atTime(day, time), time, slotIndex }))
+    const times = schedule.type === 'day-interval'
+      ? schedule.times.slice(0, 1)
+      : schedule.times
+    return times.map((time, slotIndex) => ({
+      scheduledAt: atTime(day, time),
+      time,
+      slotIndex,
+    }))
   }
 
   const interval = Math.max(1, Number(schedule.intervalHours) || 1) * 60 * MINUTE
@@ -508,7 +657,7 @@ export function adjustScheduleAfterDose(medication, dose, takenAt) {
   shiftedAt.setSeconds(0, 0)
   const scheduledAt = new Date(dose.scheduledAt)
   scheduledAt.setSeconds(0, 0)
-  const dynamicallyScheduled = schedule.type === 'daily' || schedule.type === 'interval' || schedule.type === 'day-interval'
+  const dynamicallyScheduled = schedule.type === 'daily' || schedule.type === 'interval'
   const shifted = dynamicallyScheduled && shiftedAt.getTime() !== scheduledAt.getTime()
   const shiftMinutes = Math.round((shiftedAt - scheduledAt) / MINUTE)
   return {
@@ -517,13 +666,11 @@ export function adjustScheduleAfterDose(medication, dose, takenAt) {
     originalScheduledAt: shifted ? dose.scheduledAt : null,
     times: shifted && schedule.type === 'daily'
       ? medication.times.map((time) => shiftTime(time, shiftMinutes)).sort()
-      : shifted && schedule.type === 'day-interval'
-        ? medication.times.map((time, index) => index === dose.slotIndex ? shiftedAt.toTimeString().slice(0, 5) : time)
       : medication.times,
     schedule: shifted
       ? {
           ...schedule,
-          anchorAt: schedule.type === 'interval' || schedule.type === 'day-interval' ? shiftedAt.toISOString() : schedule.anchorAt,
+          anchorAt: schedule.type === 'interval' ? shiftedAt.toISOString() : schedule.anchorAt,
           changes: [...schedule.changes, {
             effectiveAt: shiftedAt.toISOString(),
             previous: {
@@ -619,7 +766,8 @@ export function addTakenHistoryRecord(medication, recordId, dateKey, time, injec
     times: Array.isArray(medication.times) && medication.times.length ? medication.times : [time],
   }
   const latestTakenAt = getLastTaken(base)?.takenAt
-  const shouldReanchor = !latestTakenAt || takenAt >= new Date(latestTakenAt)
+  const shouldReanchor = scheduleFor(base).type !== 'day-interval' &&
+    (!latestTakenAt || takenAt >= new Date(latestTakenAt))
   const slotIndex = nearestSlotIndex(base, previousScheduledAt)
   const overridden = shouldReanchor
     ? overrideScheduledTime(base, { scheduledAt: takenAt, slotIndex }, time)

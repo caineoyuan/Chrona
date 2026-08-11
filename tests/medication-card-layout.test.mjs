@@ -35,4 +35,5 @@ test('medication list cards use their full width and show concise schedule detai
   assert.match(css, /\.med-grid \.med-card \.card-title \{[^}]*font-size: var\(--font-lg\);/)
   assert.match(css, /\.med-grid \.med-card :where\(\.notes, \.inventory-row, \.med-footer\) \{\s*border-top: 0;\s*margin-top: 4px;\s*padding-top: 8px;/)
   assert.doesNotMatch(css, /\.meta-pill|\.paused-badge/)
+  assert.match(css, /\.medira-shell \.empty\.card-wrap \{ padding: 0; color: var\(--text\); text-align: center; \}/)
 })

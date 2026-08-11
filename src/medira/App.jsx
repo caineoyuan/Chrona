@@ -35,6 +35,7 @@ import {
   parsePastedTime,
   reminderOffsets,
   removeTakenHistoryRecord,
+  scheduleTimesForDisplay,
   timesForScheduleType,
   timePartInput,
   toTwelveHourTime,
@@ -115,16 +116,17 @@ function localDateValue(date) {
 
 function scheduleLabels(medication) {
   const schedule = { type: 'daily', intervalHours: 12, intervalDays: 7, weekdays: [], ...medication.schedule }
+  const displayTimes = scheduleTimesForDisplay(medication)
   let frequency
   if (schedule.type === 'interval') frequency = `Every ${schedule.intervalHours} hours`
-  else if (schedule.type === 'day-interval') frequency = `Every ${schedule.intervalDays} days at ${formatTime(medication.times[0])}`
+  else if (schedule.type === 'day-interval') frequency = `Every ${schedule.intervalDays} days at ${formatTime(displayTimes[0])}`
   else if (schedule.type === 'weekly') {
     const frequency = weeklyFrequency(schedule.weekdays)
-    const labels = [`${frequency} at ${formatTime(medication.times[0])}`]
+    const labels = [`${frequency} at ${formatTime(displayTimes[0])}`]
     if (schedule.startDate) labels.push(`Starts ${formatLocalDate(schedule.startDate)}`)
     return labels
   }
-  else frequency = `Daily at ${medication.times.map(formatTime).join(' and ')}`
+  else frequency = `Daily at ${displayTimes.map(formatTime).join(' and ')}`
   return [frequency, ...(schedule.startDate ? [`Starts ${formatLocalDate(schedule.startDate)}`] : [])]
 }
 

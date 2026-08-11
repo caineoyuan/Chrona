@@ -24,6 +24,7 @@ test('medication permissions keep viewer history and editing independently gated
     canViewSchedule: true,
     ownerUserId: null,
     ownerUsername: 'Owner',
+    ownerTimezone: null,
   })
   assert.equal(medicationPermissions({
     resourceAccess: { role: 'editor', canViewHistory: false },

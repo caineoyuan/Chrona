@@ -257,7 +257,7 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .dose-info span { color: var(--muted); font-size: var(--font-xs); margin-top: 3px; }
 .dose-info em { color: var(--purple); font-style: normal; }
 .dose-info span.skipped-at { color: var(--accent-ink); font-size: var(--font-xs); font-weight: 600; }
-.empty { text-align: center; }
+.medira-shell .empty.card-wrap { padding: 0; color: var(--text); text-align: center; }
 .empty .card { padding: 40px 24px; }
 .empty-icon { margin: auto; display: grid; place-items: center; width: 60px; height: 60px; border-radius: 50%; background: rgba(1,238,184,.12); color: var(--accent-ink); }
 .empty .card-title { font-size: var(--font-md); margin: 15px 0 6px; }

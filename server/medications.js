@@ -121,6 +121,7 @@ function resourceFromRow(row) {
       canShare: Boolean(row.can_share),
       ownerUserId: String(row.owner_user_id),
       ownerUsername: row.owner_username || null,
+      ownerTimezone: row.owner_timezone || null,
     },
     data: {
       ...data,
@@ -155,6 +156,7 @@ async function accessibleMedication(
     `SELECT m.id, m.owner_user_id, m.medication_data - 'history' AS medication_data,
             m.version, m.legacy_id,
             owner.display_username AS owner_username,
+            owner.timezone AS owner_timezone,
             CASE WHEN m.owner_user_id = $2 THEN 'owner'
                  WHEN $3::boolean THEN s.role END AS access_role,
             CASE WHEN m.owner_user_id = $2 THEN true
@@ -525,6 +527,7 @@ export function createMedicationsRouter(poolFn = pool, options = {}) {
           lists: result.rows.map((row) => ({
             ownerUserId: String(row.id),
             username: row.display_username,
+            timezone: row.timezone,
             role: row.role,
             canViewHistory: Boolean(row.can_view_history),
             avatar: profileFromRow(row).avatar,
@@ -668,6 +671,7 @@ export function createMedicationsRouter(poolFn = pool, options = {}) {
                 m.medication_data - 'history' AS medication_data,
                 m.version, m.legacy_id,
                 owner.display_username AS owner_username,
+                owner.timezone AS owner_timezone,
                 CASE WHEN m.owner_user_id = $1 THEN 'owner'
                      WHEN $2::boolean THEN s.role END AS access_role,
                 CASE WHEN m.owner_user_id = $1 THEN true
@@ -784,6 +788,7 @@ export function createMedicationsRouter(poolFn = pool, options = {}) {
           can_view_history: current.can_view_history,
           can_share: current.can_share,
           owner_username: current.owner_username,
+          owner_timezone: current.owner_timezone,
         }
         await syncLegacySnapshot(client, current.owner_user_id)
         return { row }

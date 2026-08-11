@@ -70,6 +70,7 @@ const viewerRow = {
   can_view_history: false,
   can_share: false,
   owner_username: 'Medication Owner',
+  owner_timezone: 'America/New_York',
 }
 
 test('resource list strips embedded history for a viewer without history access', async () => {
@@ -93,6 +94,7 @@ test('resource list strips embedded history for a viewer without history access'
     canShare: false,
     ownerUserId: '3',
     ownerUsername: 'Medication Owner',
+    ownerTimezone: 'America/New_York',
   })
   assert.equal(body.medications[0].data.id, 'client-med-1')
   assert.equal('history' in body.medications[0].data, false)
@@ -142,6 +144,7 @@ test('shared medication lists expose safe owner profiles and permissions', async
   assert.deepEqual(body.lists[1], {
     ownerUserId: '3',
     username: 'Shared Owner',
+    timezone: 'UTC',
     role: 'viewer',
     canViewHistory: false,
     avatar: {

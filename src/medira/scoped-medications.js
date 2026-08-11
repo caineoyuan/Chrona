@@ -107,5 +107,6 @@ export function medicationPermissions(medication) {
     canViewSchedule,
     ownerUserId: access?.ownerUserId || null,
     ownerUsername: access?.ownerUsername || null,
+    ownerTimezone: access?.ownerTimezone || null,
   }
 }
