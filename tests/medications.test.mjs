@@ -76,7 +76,8 @@ const viewerRow = {
 test('resource list strips embedded history for a viewer without history access', async () => {
   const pool = fakePool(async (text) => {
     if (text.includes('FROM medications m')) {
-      assert.match(text, /medication_data - 'history' AS medication_data/)
+      assert.match(text, /m\.medication_data/)
+      assert.doesNotMatch(text, /medication_data - 'history'/)
       assert.match(text, /LEFT JOIN medication_list_shares s/)
       return { rows: [viewerRow] }
     }
@@ -159,7 +160,7 @@ test('shared medication lists expose safe owner profiles and permissions', async
 test('detail never includes history and history endpoint enforces can_view_history', async () => {
   const pool = fakePool(async (text) => {
     if (text.includes('FROM medications m')) {
-      assert.match(text, /medication_data - 'history' AS medication_data/)
+      assert.match(text, /m\.medication_data/)
       return { rows: [viewerRow] }
     }
     assert.doesNotMatch(text, /FROM medication_dose_events/)
@@ -339,10 +340,10 @@ test('editors with history access can create a dose event and advance the resour
   assert.equal(response.status, 201)
   assert.equal(body.version, 5)
   assert.equal(body.doseEvent.id, 'dose-client-1')
-  assert.ok(pool.calls.some(({ text }) => text.includes('INSERT INTO user_medications')))
+  assert.equal(pool.calls.some(({ text }) => text.includes('user_medications')), false)
 })
 
-test('legacy GET reconstructs IDs, schedules, inventory, and history from normalized rows', async () => {
+test('legacy GET reads details and history from the canonical medication document', async () => {
   const pool = fakePool(async (text) => {
     if (text.includes('FROM medications') && text.includes('owner_user_id')) {
       return {
@@ -353,6 +354,15 @@ test('legacy GET reconstructs IDs, schedules, inventory, and history from normal
             name: 'Metformin',
             schedule: { type: 'weekly', weekdays: [1] },
             inventory: { remaining: 12, unit: 'tablets' },
+            history: [{
+              id: 'dose-client-1',
+              scheduledAt: '2026-02-01T09:00:00.000Z',
+              takenAt: '2026-02-01T09:05:00.000Z',
+              skippedAt: null,
+              originalScheduledAt: null,
+              status: 'on-time',
+              injectionSite: null,
+            }],
           },
           legacy_id: 'client-med-1',
           legacy_position: 1,
@@ -362,21 +372,7 @@ test('legacy GET reconstructs IDs, schedules, inventory, and history from normal
         }],
       }
     }
-    if (text.includes('FROM medication_dose_events')) {
-      return {
-        rows: [{
-          id: '91',
-          medication_id: '41',
-          legacy_id: 'dose-client-1',
-          scheduled_at: '2026-02-01T09:00:00.000Z',
-          taken_at: '2026-02-01T09:05:00.000Z',
-          skipped_at: null,
-          original_scheduled_at: null,
-          status: 'on-time',
-          injection_site: null,
-        }],
-      }
-    }
+    assert.doesNotMatch(text, /FROM medication_dose_events/)
     return { rows: [] }
   })
 
@@ -404,16 +400,13 @@ test('legacy GET reconstructs IDs, schedules, inventory, and history from normal
   })
 })
 
-test('legacy PUT updates normalized rows and keeps the rollback snapshot transactionally', async () => {
+test('legacy PUT stores history only in canonical documents transactionally', async () => {
   const pool = fakePool(async (text) => {
     if (text.includes('SELECT id, legacy_id, legacy_position') && text.includes('FROM medications')) {
       return { rows: [] }
     }
     if (text.includes('INSERT INTO medications')) return { rows: [{ id: '51' }] }
-    if (text.includes('SELECT id, legacy_id, scheduled_at')) return { rows: [] }
-    if (text.includes('INSERT INTO medication_dose_events')) {
-      return { rows: [{ id: '101' }] }
-    }
+    assert.doesNotMatch(text, /medication_dose_events/)
     return { rows: [] }
   })
 
@@ -438,11 +431,14 @@ test('legacy PUT updates normalized rows and keeps the rollback snapshot transac
 
   assert.equal(response.status, 200)
   assert.ok(pool.calls.some(({ text }) => text.includes('INSERT INTO medications')))
-  assert.ok(pool.calls.some(({ text }) => text.includes('INSERT INTO medication_dose_events')))
-  const legacyWrite = pool.calls.find(
-    ({ text }) => text.includes('INSERT INTO user_medications'),
-  )
-  assert.deepEqual(JSON.parse(legacyWrite.params[1]), medications)
+  const canonicalWrite = pool.calls.find(({ text }) => text.includes('INSERT INTO medications'))
+  assert.deepEqual(JSON.parse(canonicalWrite.params[1]).history, [{
+    ...medications[0].history[0],
+    skippedAt: null,
+    originalScheduledAt: null,
+    injectionSite: null,
+  }])
+  assert.equal(pool.calls.some(({ text }) => text.includes('user_medications')), false)
   assert.ok(pool.calls.some(({ text }) => text === 'COMMIT'))
 })
 

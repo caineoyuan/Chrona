@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { randomUUID } from 'node:crypto'
 import { requireAuth } from './auth.js'
 import { pool } from './db.js'
 import { medicationEventHub } from './medication-events.js'
@@ -26,14 +27,19 @@ function legacyId(value) {
 function medicationData(value) {
   if (!isObject(value)) return null
   const {
-    history: _history,
     resourceId: _resourceId,
+    resourceVersion: _resourceVersion,
+    resourceAccess: _resourceAccess,
     version: _version,
     role: _role,
     canViewHistory: _canViewHistory,
     ...data
   } = value
-  return data
+  const history = Array.isArray(data.history)
+    ? data.history.map(doseEventDocument)
+    : []
+  if (history.some((event) => !event)) return null
+  return { ...data, history }
 }
 
 function timestamp(value, required = false) {
@@ -57,6 +63,7 @@ function doseEventInput(value) {
   ) {
     return null
   }
+
   const status = DOSE_STATUSES.has(value.status)
     ? value.status
     : skippedAt
@@ -81,6 +88,20 @@ function doseEventInput(value) {
   }
 }
 
+function doseEventDocument(value) {
+  const event = doseEventInput(value)
+  if (!event) return null
+  return {
+    id: event.legacyId || randomUUID(),
+    scheduledAt: event.scheduledAt,
+    takenAt: event.takenAt,
+    skippedAt: event.skippedAt,
+    originalScheduledAt: event.originalScheduledAt,
+    status: event.status,
+    injectionSite: event.injectionSite,
+  }
+}
+
 function parseVersion(request) {
   const header = request.get('if-match')
   const raw = request.body?.version ?? (header?.replace(/^W\/|"/g, ''))
@@ -88,26 +109,10 @@ function parseVersion(request) {
   return Number.isInteger(version) && version > 0 ? version : null
 }
 
-function eventFromRow(row) {
-  return {
-    id: row.legacy_id || String(row.id),
-    resourceEventId: String(row.id),
-    scheduledAt: new Date(row.scheduled_at).toISOString(),
-    takenAt: row.taken_at ? new Date(row.taken_at).toISOString() : null,
-    skippedAt: row.skipped_at ? new Date(row.skipped_at).toISOString() : null,
-    originalScheduledAt: row.original_scheduled_at
-      ? new Date(row.original_scheduled_at).toISOString()
-      : null,
-    status: row.status,
-    injectionSite: row.injection_site || null,
-  }
-}
-
 function resourceFromRow(row) {
   const data = isObject(row.medication_data) ? { ...row.medication_data } : {}
-  delete data.history
   if (row.access_role !== 'owner' && !row.can_view_history) {
-    for (const key of ['times', 'schedule', 'notifications', 'paused', 'pausePeriods']) {
+    for (const key of ['history', 'recurrenceAnchor', 'times', 'schedule', 'notifications', 'paused', 'pausePeriods']) {
       delete data[key]
     }
   }
@@ -153,7 +158,7 @@ async function accessibleMedication(
   sharingEnabled = true,
 ) {
   const result = await client.query(
-    `SELECT m.id, m.owner_user_id, m.medication_data - 'history' AS medication_data,
+    `SELECT m.id, m.owner_user_id, m.medication_data,
             m.version, m.legacy_id,
             owner.display_username AS owner_username,
             owner.timezone AS owner_timezone,
@@ -224,125 +229,16 @@ async function ownerMedicationRows(client, ownerId) {
   )
 }
 
-async function doseRows(client, medicationIds) {
-  if (!medicationIds.length) return []
-  const result = await client.query(
-    `SELECT id, medication_id, legacy_id, scheduled_at, taken_at, skipped_at,
-            original_scheduled_at, status, injection_site
-     FROM medication_dose_events
-     WHERE medication_id = ANY($1::bigint[]) AND deleted_at IS NULL
-     ORDER BY scheduled_at, id`,
-    [medicationIds],
-  )
-  return result.rows
-}
-
 async function buildLegacyArray(client, ownerId) {
   const medications = (await ownerMedicationRows(client, ownerId)).rows
-  const events = await doseRows(client, medications.map((row) => row.id))
-  const byMedication = new Map()
-  for (const event of events) {
-    const key = String(event.medication_id)
-    const list = byMedication.get(key) || []
-    list.push(eventFromRow(event))
-    byMedication.set(key, list)
-  }
   return medications.map((row) => {
     const data = isObject(row.medication_data) ? { ...row.medication_data } : {}
-    delete data.history
     return {
       ...data,
       id: row.legacy_id || data.id || String(row.id),
-      history: (byMedication.get(String(row.id)) || []).map((event) => {
-        const { resourceEventId: _resourceEventId, ...legacyEvent } = event
-        return legacyEvent
-      }),
+      history: Array.isArray(data.history) ? data.history : [],
     }
   })
-}
-
-async function syncLegacySnapshot(client, ownerId) {
-  const medications = await buildLegacyArray(client, ownerId)
-  await client.query(
-    `INSERT INTO user_medications (user_id, medications, updated_at)
-     VALUES ($1, $2, now())
-     ON CONFLICT (user_id)
-     DO UPDATE SET medications = EXCLUDED.medications, updated_at = now()`,
-    [ownerId, JSON.stringify(medications)],
-  )
-}
-
-async function replaceDoseEvents(client, medicationId, ownerId, history) {
-  const current = await client.query(
-    `SELECT id, legacy_id, scheduled_at
-     FROM medication_dose_events
-     WHERE medication_id = $1
-     FOR UPDATE`,
-    [medicationId],
-  )
-  const byLegacyId = new Map(
-    current.rows.filter((row) => row.legacy_id).map((row) => [row.legacy_id, row]),
-  )
-  const byScheduledAt = new Map(
-    current.rows.map((row) => [new Date(row.scheduled_at).toISOString(), row]),
-  )
-  const retained = []
-  for (const rawEvent of history) {
-    const event = doseEventInput(rawEvent)
-    if (!event) throw Object.assign(new Error('Invalid dose event.'), { status: 400 })
-    const existing = (event.legacyId && byLegacyId.get(event.legacyId)) ||
-      byScheduledAt.get(event.scheduledAt)
-    if (existing) {
-      await client.query(
-        `UPDATE medication_dose_events
-         SET legacy_id = COALESCE($2, legacy_id),
-             scheduled_at = $3, taken_at = $4, skipped_at = $5,
-             original_scheduled_at = $6, status = $7, injection_site = $8,
-             version = version + 1, updated_at = now(), deleted_at = NULL
-         WHERE id = $1`,
-        [
-          existing.id,
-          event.legacyId,
-          event.scheduledAt,
-          event.takenAt,
-          event.skippedAt,
-          event.originalScheduledAt,
-          event.status,
-          event.injectionSite,
-        ],
-      )
-      retained.push(existing.id)
-    } else {
-      const inserted = await client.query(
-        `INSERT INTO medication_dose_events (
-           medication_id, owner_user_id, legacy_id, scheduled_at, taken_at,
-           skipped_at, original_scheduled_at, status, injection_site
-         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         RETURNING id`,
-        [
-          medicationId,
-          ownerId,
-          event.legacyId,
-          event.scheduledAt,
-          event.takenAt,
-          event.skippedAt,
-          event.originalScheduledAt,
-          event.status,
-          event.injectionSite,
-        ],
-      )
-      retained.push(inserted.rows[0].id)
-    }
-  }
-  await client.query(
-    `UPDATE medication_dose_events
-     SET deleted_at = now(), updated_at = now(), version = version + 1
-     WHERE medication_id = $1
-       AND deleted_at IS NULL
-       AND NOT (id = ANY($2::bigint[]))`,
-    [medicationId, retained],
-  )
 }
 
 async function replaceOwnerFromLegacy(client, ownerId, medications) {
@@ -391,12 +287,6 @@ async function replaceOwnerFromLegacy(client, ownerId, medications) {
       medicationId = inserted.rows[0].id
     }
     retained.push(medicationId)
-    await replaceDoseEvents(
-      client,
-      medicationId,
-      ownerId,
-      Array.isArray(rawMedication.history) ? rawMedication.history : [],
-    )
   }
 
   await client.query(
@@ -406,21 +296,6 @@ async function replaceOwnerFromLegacy(client, ownerId, medications) {
        AND deleted_at IS NULL
        AND NOT (id = ANY($2::bigint[]))`,
     [ownerId, retained],
-  )
-  await client.query(
-    `UPDATE medication_dose_events
-     SET deleted_at = now(), updated_at = now(), version = version + 1
-     WHERE owner_user_id = $1
-       AND deleted_at IS NULL
-       AND NOT (medication_id = ANY($2::bigint[]))`,
-    [ownerId, retained],
-  )
-  await client.query(
-    `INSERT INTO user_medications (user_id, medications, updated_at)
-     VALUES ($1, $2, now())
-     ON CONFLICT (user_id)
-     DO UPDATE SET medications = EXCLUDED.medications, updated_at = now()`,
-    [ownerId, JSON.stringify(medications)],
   )
 }
 
@@ -459,17 +334,12 @@ export function createMedicationsRouter(poolFn = pool, options = {}) {
     },
   )
 
-  // Compatibility endpoint for the current whole-array Medira client.
+  // Compatibility endpoint backed by the canonical medication documents.
   router.get('/', requireAuth, async (request, response) => {
     try {
-      const normalized = await buildLegacyArray(poolFn, request.userId)
-      if (normalized.length) return response.json({ medications: normalized })
-      const legacy = await poolFn.query(
-        'SELECT medications FROM user_medications WHERE user_id = $1',
-        [request.userId],
-      )
-      const medications = legacy.rows[0]?.medications
-      return response.json({ medications: Array.isArray(medications) ? medications : [] })
+      return response.json({
+        medications: await buildLegacyArray(poolFn, request.userId),
+      })
     } catch (error) {
       console.error('get medications error', error)
       return response.status(500).json({ error: 'Could not load your medications.' })
@@ -668,7 +538,7 @@ export function createMedicationsRouter(poolFn = pool, options = {}) {
     try {
       const result = await poolFn.query(
         `SELECT m.id, m.owner_user_id,
-                m.medication_data - 'history' AS medication_data,
+                m.medication_data,
                 m.version, m.legacy_id,
                 owner.display_username AS owner_username,
                 owner.timezone AS owner_timezone,
@@ -723,7 +593,6 @@ export function createMedicationsRouter(poolFn = pool, options = {}) {
           )
           inserted.rows[0] = assigned.rows[0]
         }
-        await syncLegacySnapshot(client, request.userId)
         return inserted.rows[0]
       })
       await notifyMedicationChange(poolFn, row.owner_user_id, request.userId, {
@@ -764,7 +633,7 @@ export function createMedicationsRouter(poolFn = pool, options = {}) {
         if (!canEdit(current)) return { forbidden: true }
         if (Number(current.version) !== version) return { conflict: current.version }
         const nextData = current.access_role === 'editor' && !current.can_view_history
-          ? ['times', 'schedule', 'notifications', 'paused', 'pausePeriods']
+          ? ['history', 'recurrenceAnchor', 'times', 'schedule', 'notifications', 'paused', 'pausePeriods']
             .reduce((merged, key) => {
               if (current.medication_data?.[key] !== undefined) {
                 merged[key] = current.medication_data[key]
@@ -790,7 +659,6 @@ export function createMedicationsRouter(poolFn = pool, options = {}) {
           owner_username: current.owner_username,
           owner_timezone: current.owner_timezone,
         }
-        await syncLegacySnapshot(client, current.owner_user_id)
         return { row }
       })
       if (result.missing) return response.status(404).json({ error: 'Medication not found.' })
@@ -838,7 +706,6 @@ export function createMedicationsRouter(poolFn = pool, options = {}) {
            WHERE medication_id = $1 AND deleted_at IS NULL`,
           [id],
         )
-        await syncLegacySnapshot(client, current.owner_user_id)
         return {
           ok: true,
           ownerUserId: current.owner_user_id,
@@ -870,11 +737,12 @@ export function createMedicationsRouter(poolFn = pool, options = {}) {
       if (!medication.can_view_history) {
         return response.status(403).json({ error: 'Medication history is not shared.' })
       }
-      const events = await doseRows(poolFn, [id])
       return response.json({
         medicationId: id,
         version: Number(medication.version),
-        doseEvents: events.map(eventFromRow),
+        doseEvents: Array.isArray(medication.medication_data?.history)
+          ? medication.medication_data.history
+          : [],
       })
     } catch (error) {
       console.error('list medication dose events error', error)
@@ -885,13 +753,13 @@ export function createMedicationsRouter(poolFn = pool, options = {}) {
   async function mutateDoseEvent(request, response, operation) {
     const medicationId = parseResourceId(request.params.id)
     const eventId = request.params.eventId
-      ? parseResourceId(request.params.eventId)
-      : null
+    const validEventId = !eventId ||
+      (typeof eventId === 'string' && eventId.length > 0 && eventId.length <= 200)
     const version = parseVersion(request)
     const event = operation === 'delete'
       ? null
-      : doseEventInput(request.body?.doseEvent ?? request.body?.event)
-    if (!medicationId || (request.params.eventId && !eventId)) {
+      : doseEventDocument(request.body?.doseEvent ?? request.body?.event)
+    if (!medicationId || !validEventId) {
       return response.status(404).json({ error: 'Medication or dose event not found.' })
     }
     if (!version || (operation !== 'delete' && !event)) {
@@ -912,81 +780,36 @@ export function createMedicationsRouter(poolFn = pool, options = {}) {
           return { conflict: medication.version }
         }
 
-        let changed
+        const history = Array.isArray(medication.medication_data?.history)
+          ? medication.medication_data.history
+          : []
+        let changed = event
+        let nextHistory
         if (operation === 'create') {
-          changed = await client.query(
-            `INSERT INTO medication_dose_events (
-               medication_id, owner_user_id, legacy_id, scheduled_at, taken_at,
-               skipped_at, original_scheduled_at, status, injection_site
-             )
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-             RETURNING id, medication_id, legacy_id, scheduled_at, taken_at,
-                       skipped_at, original_scheduled_at, status, injection_site`,
-            [
-              medicationId,
-              medication.owner_user_id,
-              event.legacyId,
-              event.scheduledAt,
-              event.takenAt,
-              event.skippedAt,
-              event.originalScheduledAt,
-              event.status,
-              event.injectionSite,
-            ],
-          )
-          if (!event.legacyId) {
-            changed = await client.query(
-              `UPDATE medication_dose_events
-               SET legacy_id = id::text
-               WHERE id = $1
-               RETURNING id, medication_id, legacy_id, scheduled_at, taken_at,
-                         skipped_at, original_scheduled_at, status, injection_site`,
-              [changed.rows[0].id],
-            )
-          }
+          nextHistory = [...history.filter((item) => item.id !== event.id), event]
         } else if (operation === 'update') {
-          changed = await client.query(
-            `UPDATE medication_dose_events
-             SET legacy_id = COALESCE($3, legacy_id), scheduled_at = $4,
-                 taken_at = $5, skipped_at = $6, original_scheduled_at = $7,
-                 status = $8, injection_site = $9, version = version + 1,
-                 updated_at = now()
-             WHERE id = $1 AND medication_id = $2 AND deleted_at IS NULL
-             RETURNING id, medication_id, legacy_id, scheduled_at, taken_at,
-                       skipped_at, original_scheduled_at, status, injection_site`,
-            [
-              eventId,
-              medicationId,
-              event.legacyId,
-              event.scheduledAt,
-              event.takenAt,
-              event.skippedAt,
-              event.originalScheduledAt,
-              event.status,
-              event.injectionSite,
-            ],
-          )
+          const index = history.findIndex((item) => item.id === eventId)
+          if (index < 0) return { eventMissing: true }
+          changed = { ...event, id: history[index].id }
+          nextHistory = history.map((item, itemIndex) =>
+            itemIndex === index ? changed : item)
         } else {
-          changed = await client.query(
-            `UPDATE medication_dose_events
-             SET deleted_at = now(), updated_at = now(), version = version + 1
-             WHERE id = $1 AND medication_id = $2 AND deleted_at IS NULL
-             RETURNING id`,
-            [eventId, medicationId],
-          )
+          if (!history.some((item) => item.id === eventId)) {
+            return { eventMissing: true }
+          }
+          nextHistory = history.filter((item) => item.id !== eventId)
         }
-        if (!changed.rows[0]) return { eventMissing: true }
+        const nextData = { ...medication.medication_data, history: nextHistory }
         const updated = await client.query(
           `UPDATE medications
-           SET version = version + 1, updated_at = now()
+           SET medication_data = $2, version = version + 1, updated_at = now()
            WHERE id = $1
            RETURNING version`,
-          [medicationId],
+          [medicationId, JSON.stringify(nextData)],
         )
-        await syncLegacySnapshot(client, medication.owner_user_id)
         return {
           version: Number(updated.rows[0].version),
-          event: operation === 'delete' ? null : eventFromRow(changed.rows[0]),
+          event: operation === 'delete' ? null : changed,
           ownerUserId: medication.owner_user_id,
         }
       })

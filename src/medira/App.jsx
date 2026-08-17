@@ -15,16 +15,16 @@ import {
 import {
   addTakenHistoryRecord,
   adjustScheduleAfterDose,
+  anchorMedicationSchedule,
   formatDateTime,
-  formatReminderAdvance,
   formatRelative,
   getActionableDoses,
   getDoseWindow,
   getDosesForDay,
   getLastTaken,
   getNextDose,
-  getNextReminder,
   getRecentInjectionSites,
+  getUpcomingReminders,
   INJECTION_SITE_CODES,
   inventoryInteger,
   isFutureLocalDate,
@@ -36,6 +36,7 @@ import {
   reminderOffsets,
   removeTakenHistoryRecord,
   scheduleTimesForDisplay,
+  setRecurrenceAnchor,
   timesForScheduleType,
   timePartInput,
   toTwelveHourTime,
@@ -532,6 +533,9 @@ function MedicationForm({ initial, onSave, onClose }) {
       },
       schedule: {
         type: form.scheduleType === 'weekly' && form.weeklyMode === 'interval' ? 'day-interval' : form.scheduleType,
+        timezone: !initial || initial.resourceAccess?.role === 'owner'
+          ? Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+          : initial.schedule?.timezone || initial.resourceAccess?.ownerTimezone || 'UTC',
         intervalHours: form.scheduleType === 'interval'
           ? Math.min(12, Math.max(3, Number(form.intervalHours) || 3))
           : Math.max(1, Number(form.intervalHours) || 1),
@@ -1630,22 +1634,29 @@ function App({ colorScheme = 'dark' }) {
   const tomorrowDoses = useMemo(() => getDosesForDay(scheduleMedications, tomorrow), [scheduleMedications, tomorrow])
   const takenToday = todayDoses.filter((dose) => dose.record?.status === 'on-time' || dose.record?.status === 'late').length
   const next = useMemo(() => getNextDose(scheduleMedications, now), [scheduleMedications, now])
-  const reminder = useMemo(() => getNextReminder(ownMedications, now), [ownMedications, now])
+  const localReminders = useMemo(
+    () => getUpcomingReminders(ownMedications, now),
+    [ownMedications, now],
+  )
   useEffect(() => {
-    if (hasPushSubscription || !reminder || !('Notification' in window) || Notification.permission !== 'granted') return
-    const delay = reminder.alertAt - Date.now()
-    if (delay < 0 || delay > 2_147_483_647) return
-    const timer = setTimeout(async () => {
-      const lead = reminder.advanceMinutes
-      const prefix = formatReminderAdvance(lead)
-      const options = { body: `${prefix} · ${reminder.medication.dose || reminder.medication.notes || ''}`, icon: reminder.medication.trackInjectionSite ? '/syringe-icon.svg' : '/medication-icon.png', tag: `dose-${reminder.medication.id}-${reminder.time}-${lead}` }
-      const registration = await navigator.serviceWorker?.ready
-      if (registration) registration.showNotification(reminder.medication.name, options)
-      else new Notification(reminder.medication.name, options)
-      setNow(new Date())
-    }, delay)
-    return () => clearTimeout(timer)
-  }, [hasPushSubscription, reminder])
+    if (hasPushSubscription || !('Notification' in window) || Notification.permission !== 'granted') return
+    const timers = localReminders.flatMap((reminder) => {
+      const delay = new Date(reminder.alertAt).getTime() - Date.now()
+      if (delay < 0 || delay > 2_147_483_647) return []
+      return [setTimeout(async () => {
+        const options = {
+          body: reminder.body,
+          icon: reminder.icon,
+          tag: reminder.tag,
+        }
+        const registration = await navigator.serviceWorker?.ready
+        if (registration) registration.showNotification(reminder.title, options)
+        else new Notification(reminder.title, options)
+        setNow(new Date())
+      }, delay)]
+    })
+    return () => timers.forEach(clearTimeout)
+  }, [hasPushSubscription, localReminders])
 
   const markTaken = (dose) => {
     const permissions = medicationPermissions(dose.medication)
@@ -1665,7 +1676,7 @@ function App({ colorScheme = 'dark' }) {
     const adjustment = adjustScheduleAfterDose(dose.medication, dose, takenAt)
     const scheduledAt = adjustment.scheduledAt.toISOString()
     const originalScheduledAt = adjustment.originalScheduledAt?.toISOString() || null
-    setMedications((items) => items.map((med) => med.id !== dose.medication.id ? med : {
+    setMedications((items) => items.map((med) => med.id !== dose.medication.id ? med : setRecurrenceAnchor({
       ...med,
       history: [...med.history.filter((entry) => (entry.originalScheduledAt || entry.scheduledAt) !== dose.scheduledAt.toISOString()), {
         id: crypto.randomUUID(), scheduledAt, takenAt: takenAt.toISOString(),
@@ -1679,7 +1690,11 @@ function App({ colorScheme = 'dark' }) {
         ...med.inventory,
         remaining: Math.max(0, inventoryInteger(med.inventory.remaining) - 1),
       },
-    }))
+    }, takenAt, 'taken', {
+      consumed: true,
+      scheduledAt: dose.scheduledAt,
+      slotIndex: dose.slotIndex,
+    })))
     setPendingDose(null)
     playComplete()
   }
@@ -1723,12 +1738,21 @@ function App({ colorScheme = 'dark' }) {
 
   const saveMedication = (form) => {
     if (editing) {
-      setMedications((items) => items.map((med) => med.id === editing.id ? { ...med, ...form } : med))
+      setMedications((items) => items.map((med) => {
+        if (med.id !== editing.id) return med
+        const updated = { ...med, ...form }
+        const scheduleChanged =
+          JSON.stringify(med.times) !== JSON.stringify(updated.times) ||
+          JSON.stringify(med.schedule) !== JSON.stringify(updated.schedule)
+        return scheduleChanged
+          ? anchorMedicationSchedule(updated, new Date(), 'regimen-edit')
+          : updated
+      }))
     } else {
-      setMedications((items) => [...items, {
+      setMedications((items) => [...items, anchorMedicationSchedule({
         ...form, id: crypto.randomUUID(), createdAt: new Date().toISOString(), history: [],
         paused: false, pausePeriods: [],
-      }])
+      }, new Date(), 'regimen-create')])
     }
     setEditing(null)
     setShowForm(false)

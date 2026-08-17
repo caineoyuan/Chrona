@@ -455,6 +455,7 @@ async function main() {
       canShare: false,
       ownerUserId: String(aliceProfile.id),
       ownerUsername: aliceProfile.username,
+      ownerTimezone: 'UTC',
     })
     assert.equal('history' in viewerResource.data, false)
     for (const key of ['times', 'schedule', 'notifications', 'paused', 'pausePeriods']) {

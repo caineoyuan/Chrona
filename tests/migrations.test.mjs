@@ -25,7 +25,7 @@ function fakePool(appliedRows = [], failSql = null) {
 }
 
 test('migrations are ordered and contain the planned sharing schema', () => {
-  assert.deepEqual(migrations.map(({ version }) => version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
+  assert.deepEqual(migrations.map(({ version }) => version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
   const sql = migrations.map(({ up }) => up).join('\n')
   for (const table of [
     'user_identities',
@@ -45,7 +45,10 @@ test('migrations are ordered and contain the planned sharing schema', () => {
     assert.match(sql, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`))
   }
   assert.match(sql, /source\.medication->'history'/)
-  assert.doesNotMatch(sql, /medication\.medication_data->'history'/)
+  assert.doesNotMatch(
+    migrations.find(({ version }) => version === 4).up,
+    /medication\.medication_data->'history'/,
+  )
   assert.match(sql, /ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone TEXT/)
   assert.match(sql, /SELECT id, 'local', lower\(username\), password_hash, created_at/)
   assert.match(sql, /CREATE TABLE IF NOT EXISTS users[\s\S]*password_hash TEXT NOT NULL/)
@@ -55,6 +58,8 @@ test('migrations are ordered and contain the planned sharing schema', () => {
   assert.match(sql, /collaboration_events_pending_push_idx/)
   assert.match(sql, /ADD COLUMN IF NOT EXISTS avatar_kind TEXT/)
   assert.match(sql, /ADD COLUMN IF NOT EXISTS avatar_data BYTEA/)
+  assert.match(sql, /jsonb_build_object\(\s*'history'/)
+  assert.match(sql, /backfill_medication_recurrence_anchors|migrated-taken/)
   assert.match(sql, /users_avatar_metadata_check/)
   assert.doesNotMatch(sql, /DROP TABLE user_medications/)
 })

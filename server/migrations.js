@@ -600,6 +600,81 @@ export const migrations = [
       ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data BYTEA;
     `,
   },
+  {
+    version: 14,
+    name: 'canonical_medication_documents',
+    up: `
+      UPDATE medications medication
+      SET medication_data =
+        (medication.medication_data - 'history') ||
+        jsonb_build_object(
+          'history',
+          COALESCE((
+            SELECT jsonb_agg(
+              jsonb_strip_nulls(jsonb_build_object(
+                'id', COALESCE(event.legacy_id, event.id::text),
+                'scheduledAt', to_char(event.scheduled_at AT TIME ZONE 'UTC',
+                  'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+                'takenAt', CASE WHEN event.taken_at IS NOT NULL THEN
+                  to_char(event.taken_at AT TIME ZONE 'UTC',
+                    'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END,
+                'skippedAt', CASE WHEN event.skipped_at IS NOT NULL THEN
+                  to_char(event.skipped_at AT TIME ZONE 'UTC',
+                    'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END,
+                'originalScheduledAt', CASE WHEN event.original_scheduled_at IS NOT NULL THEN
+                  to_char(event.original_scheduled_at AT TIME ZONE 'UTC',
+                    'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END,
+                'status', event.status,
+                'injectionSite', event.injection_site
+              ))
+              ORDER BY event.scheduled_at, event.id
+            )
+            FROM medication_dose_events event
+            WHERE event.medication_id = medication.id
+              AND event.deleted_at IS NULL
+          ), '[]'::jsonb)
+        );
+    `,
+  },
+  {
+    version: 15,
+    name: 'backfill_medication_recurrence_anchors',
+    up: `
+      WITH latest_taken AS (
+        SELECT DISTINCT ON (medication.id)
+          medication.id AS medication_id,
+          history.record
+        FROM medications medication
+        CROSS JOIN LATERAL jsonb_array_elements(
+          COALESCE(medication.medication_data->'history', '[]'::jsonb)
+        ) AS history(record)
+        WHERE medication.deleted_at IS NULL
+          AND history.record->>'takenAt' IS NOT NULL
+        ORDER BY
+          medication.id,
+          (history.record->>'takenAt')::timestamptz DESC
+      )
+      UPDATE medications medication
+      SET medication_data = medication.medication_data || jsonb_build_object(
+        'recurrenceAnchor',
+        jsonb_build_object(
+          'at', latest_taken.record->>'takenAt',
+          'scheduledAt', COALESCE(
+            latest_taken.record->>'originalScheduledAt',
+            latest_taken.record->>'scheduledAt'
+          ),
+          'updatedAt', latest_taken.record->>'takenAt',
+          'source', 'migrated-taken',
+          'consumed', true,
+          'slotIndex', 0
+        )
+      )
+      FROM latest_taken
+      WHERE latest_taken.medication_id = medication.id
+        AND medication.deleted_at IS NULL
+        AND medication.medication_data->'recurrenceAnchor' IS NULL;
+    `,
+  },
 ]
 
 export function migrationChecksum(migration) {

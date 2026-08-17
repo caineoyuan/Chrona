@@ -39,58 +39,30 @@ export function medicationResourceClient(api) {
         body: JSON.stringify({ version }),
       })
     },
-    async listDoseEvents(id) {
-      return request(`/resources/${id}/dose-events`)
-    },
-    async createDoseEvent(id, version, doseEvent) {
-      return request(`/resources/${id}/dose-events`, {
-        method: 'POST',
-        body: JSON.stringify({ version, doseEvent }),
-      })
-    },
-    async updateDoseEvent(id, eventId, version, doseEvent) {
-      return request(`/resources/${id}/dose-events/${eventId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ version, doseEvent }),
-      })
-    },
-    async removeDoseEvent(id, eventId, version) {
-      return request(`/resources/${id}/dose-events/${eventId}`, {
-        method: 'DELETE',
-        body: JSON.stringify({ version }),
-      })
-    },
   }
-}
-
-export async function medicationHistoryForResource(client, resource) {
-  if (!resource.access?.canViewHistory) return []
-  const response = await client.listDoseEvents(resource.id)
-  return Array.isArray(response?.doseEvents) ? response.doseEvents : []
 }
 
 export function medicationData(medication) {
   const {
-    history: _history,
     resourceId: _resourceId,
     resourceVersion: _resourceVersion,
     resourceAccess: _resourceAccess,
     ...data
   } = medication
-  return data
+  return {
+    ...data,
+    history: (medication.history || []).map((event) => {
+      const { resourceEventId: _resourceEventId, ...record } = event
+      return record
+    }),
+  }
 }
 
 export function privateMedicationSnapshot(medications) {
   return medications
     .filter((medication) =>
       !medication.resourceId || medication.resourceAccess?.role === 'owner')
-    .map((medication) => ({
-      ...medicationData(medication),
-      history: (medication.history || []).map((event) => {
-        const { resourceEventId: _resourceEventId, ...record } = event
-        return record
-      }),
-    }))
+    .map(medicationData)
 }
 
 export function medicationPermissions(medication) {

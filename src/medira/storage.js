@@ -11,7 +11,6 @@ import {
 import { inventoryInteger, reminderOffsets, repairDynamicSchedule, takenRecordStatus } from './lib'
 import {
   medicationData,
-  medicationHistoryForResource,
   medicationResourceClient,
   privateMedicationSnapshot,
 } from './scoped-medications.js'
@@ -139,19 +138,13 @@ function normalizeMedication(medication) {
   })
 }
 
-function resourceMedication(resource, history = []) {
+function resourceMedication(resource) {
   return normalizeMedication({
     ...resource.data,
-    history,
     resourceId: resource.id,
     resourceVersion: resource.version,
     resourceAccess: resource.access,
   })
-}
-
-async function loadMedicationResource(client, resource) {
-  const history = await medicationHistoryForResource(client, resource)
-  return resourceMedication(resource, history)
 }
 
 function sameValue(left, right) {
@@ -186,7 +179,9 @@ function loadLocalMedications() {
 
 export function useMedications() {
   const localMedications = useRef(loadLocalMedications())
-  const [medications, setMedications] = useState(localMedications.current)
+  const [medications, setMedications] = useState(
+    isLocalPreview ? localMedications.current : [],
+  )
   const [loaded, setLoaded] = useState(false)
   const serverBacked = useRef(false)
   const latestMedications = useRef(medications)
@@ -206,16 +201,11 @@ export function useMedications() {
       id: medication.resourceId,
       version: medication.resourceVersion,
       access: medication.resourceAccess,
-      eventIds: new Map(
-        (medication.history || [])
-          .filter((event) => event.resourceEventId)
-          .map((event) => [event.id, event.resourceEventId]),
-      ),
     })
   }, [])
 
   const loadResource = useCallback(async (resource) => {
-    return loadMedicationResource(client.current, resource)
+    return resourceMedication(resource)
   }, [])
 
   const refetchResource = useCallback(async (clientId, resourceId) => {
@@ -246,32 +236,10 @@ export function useMedications() {
       id: resource.id,
       version: resource.version,
       access: resource.access,
-      eventIds: new Map(),
     }
     resourceStates.current.set(medication.id, state)
-    for (const event of medication.history || []) {
-      const result = await client.current.createDoseEvent(
-        state.id,
-        state.version,
-        event,
-      )
-      state.version = result.version
-      state.eventIds.set(event.id, result.doseEvent.resourceEventId)
-    }
     return state
   }, [])
-
-  const migratePrivateMedications = useCallback(async (source) => {
-    const migrated = []
-    for (const medication of source.map(normalizeMedication)) {
-      await createResource(medication)
-      const resource = await client.current.get(
-        resourceStates.current.get(medication.id).id,
-      )
-      migrated.push(await loadResource(resource))
-    }
-    return migrated
-  }, [createResource, loadResource])
 
   useEffect(() => {
     if (isLocalPreview) {
@@ -284,18 +252,6 @@ export function useMedications() {
         if (!active) return
         serverBacked.current = true
         let serverMedications = await Promise.all(resources.map(loadResource))
-        if (!serverMedications.length) {
-          const legacy = await api('/api/medications')
-          const legacyMedications = Array.isArray(legacy?.medications)
-            ? legacy.medications
-            : []
-          const privateFallback = legacyMedications.length
-            ? legacyMedications
-            : localMedications.current
-          if (privateFallback.length) {
-            serverMedications = await migratePrivateMedications(privateFallback)
-          }
-        }
         if (!active) return
         for (const medication of serverMedications) rememberResource(medication)
         latestMedications.current = serverMedications
@@ -309,10 +265,10 @@ export function useMedications() {
         if (active) setLoaded(true)
       })
     return () => { active = false }
-  }, [loadResource, migratePrivateMedications, rememberResource])
+  }, [loadResource, rememberResource])
 
   useEffect(() => {
-    if (!loaded) return
+    if (!loaded || !isLocalPreview) return
     writeStorageJson(STORAGE_KEY, privateMedicationSnapshot(medications), {
       onError: (error) => console.error('Could not save private medication cache:', error),
     })
@@ -343,36 +299,6 @@ export function useMedications() {
         )
         state.version = updated.version
         state.access = updated.access
-      }
-
-      const oldEvents = new Map((previous.history || []).map((event) => [event.id, event]))
-      const nextEvents = new Map((next.history || []).map((event) => [event.id, event]))
-      for (const [eventId, event] of oldEvents) {
-        if (nextEvents.has(eventId)) continue
-        const resourceEventId = event.resourceEventId || state.eventIds.get(eventId)
-        if (!resourceEventId) continue
-        const result = await client.current.removeDoseEvent(
-          state.id,
-          resourceEventId,
-          state.version,
-        )
-        state.version = result.version
-        state.eventIds.delete(eventId)
-      }
-      for (const [eventId, event] of nextEvents) {
-        const oldEvent = oldEvents.get(eventId)
-        if (oldEvent && sameValue(oldEvent, event)) continue
-        const resourceEventId = event.resourceEventId || state.eventIds.get(eventId)
-        const result = resourceEventId
-          ? await client.current.updateDoseEvent(
-              state.id,
-              resourceEventId,
-              state.version,
-              event,
-            )
-          : await client.current.createDoseEvent(state.id, state.version, event)
-        state.version = result.version
-        state.eventIds.set(eventId, result.doseEvent.resourceEventId)
       }
       setSyncError(null)
     } catch (error) {
@@ -483,11 +409,13 @@ export function useMedications() {
       }
     }
     window.addEventListener('focus', refreshVisibleMedications)
+    window.addEventListener('chrona:timezone-updated', refreshVisibleMedications)
     document.addEventListener('visibilitychange', refreshVisibleMedications)
     return () => {
       window.clearInterval(timer)
       events?.close()
       window.removeEventListener('focus', refreshVisibleMedications)
+      window.removeEventListener('chrona:timezone-updated', refreshVisibleMedications)
       document.removeEventListener('visibilitychange', refreshVisibleMedications)
     }
   }, [loaded, refetch, refetchChangedResource])

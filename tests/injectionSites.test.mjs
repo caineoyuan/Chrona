@@ -4,6 +4,7 @@ import {
   addTakenHistoryRecord,
   adjustScheduleAfterDose,
   adherenceFor,
+  anchorMedicationSchedule,
   formatRelative,
   getActionableDoses,
   getDosesForDay,
@@ -25,6 +26,7 @@ import {
   repairDynamicSchedule,
   removeTakenHistoryRecord,
   scheduleTimesForDisplay,
+  setRecurrenceAnchor,
   takenRecordStatus,
   timePartInput,
   timesForScheduleType,
@@ -303,6 +305,140 @@ test('converts a shared every-N-days schedule from the owner timezone and does n
 
   const next = getNextDose([taken], new Date('2026-08-10T00:01:00.000Z'))
   assert.equal(next.scheduledAt.toISOString(), '2026-08-13T00:00:00.000Z')
+})
+
+test('keeps weekly anchors isolated between shared owners in EST and PST', () => {
+  const schedule = {
+    type: 'weekly',
+    intervalHours: 168,
+    weekdays: [1],
+    anchorAt: null,
+    changes: [],
+  }
+  const western = {
+    ...medication(schedule, ['11:00']),
+    id: 'western-weekly',
+    name: 'Testosterone',
+    resourceAccess: {
+      role: 'viewer',
+      ownerUserId: 'western-owner',
+      ownerTimezone: 'America/Los_Angeles',
+      canViewHistory: true,
+      canViewSchedule: true,
+    },
+  }
+  const eastern = {
+    ...medication(schedule, ['08:00']),
+    id: 'eastern-weekly',
+    name: 'Testosterone',
+    resourceAccess: {
+      role: 'viewer',
+      ownerUserId: 'eastern-owner',
+      ownerTimezone: 'America/New_York',
+      canViewHistory: true,
+      canViewSchedule: true,
+    },
+    history: [{
+      id: 'eastern-weekly-dose',
+      scheduledAt: '2026-08-17T12:00:00.000Z',
+      takenAt: '2026-08-17T12:00:00.000Z',
+      status: 'on-time',
+    }],
+  }
+
+  const doses = getDosesForDay(
+    [western, eastern],
+    new Date('2026-08-17T19:00:00.000Z'),
+  )
+
+  assert.equal(doses.length, 2)
+  assert.ok(doses.some(({ medication, scheduledAt }) =>
+    medication.id === western.id &&
+    scheduledAt.toISOString() === '2026-08-17T18:00:00.000Z'))
+  assert.ok(doses.some(({ record }) => record?.id === 'eastern-weekly-dose'))
+})
+
+test('keeps every-N-days anchors isolated between shared owners in PST and EST', () => {
+  const schedule = {
+    type: 'day-interval',
+    intervalDays: 3,
+    intervalHours: 72,
+    weekdays: [],
+    anchorAt: '2026-08-15T18:00:00.000Z',
+    changes: [],
+  }
+  const western = {
+    ...medication(schedule, ['11:00']),
+    id: 'western-every-days',
+    name: 'Estradiol',
+    resourceAccess: {
+      role: 'viewer',
+      ownerUserId: 'western-owner',
+      ownerTimezone: 'America/Los_Angeles',
+      canViewHistory: true,
+      canViewSchedule: true,
+    },
+  }
+  const eastern = {
+    ...medication(schedule, ['14:00']),
+    id: 'eastern-every-days',
+    name: 'Estradiol',
+    resourceAccess: {
+      role: 'viewer',
+      ownerUserId: 'eastern-owner',
+      ownerTimezone: 'America/New_York',
+      canViewHistory: true,
+      canViewSchedule: true,
+    },
+    history: [{
+      id: 'eastern-every-days-dose',
+      scheduledAt: '2026-08-17T18:00:00.000Z',
+      takenAt: '2026-08-17T18:00:00.000Z',
+      status: 'on-time',
+    }],
+  }
+
+  const westernNext = getDosesForDay(
+    [western, eastern],
+    new Date('2026-08-18T19:00:00.000Z'),
+  ).filter(({ medication }) => medication.id === western.id)
+
+  assert.equal(westernNext.length, 1)
+  assert.equal(westernNext[0].scheduledAt.toISOString(), '2026-08-18T18:00:00.000Z')
+})
+
+test('canonical schedule timezone overrides a stale shared owner timezone', () => {
+  const weekly = {
+    ...medication({
+      type: 'weekly',
+      timezone: 'America/New_York',
+      intervalHours: 168,
+      weekdays: [1],
+      anchorAt: null,
+      changes: [],
+    }, ['17:36']),
+    id: 'repaired-testosterone',
+    name: 'Testosterone Cypionate',
+    recurrenceAnchor: {
+      at: '2026-08-17T21:36:00.000Z',
+      scheduledAt: '2026-08-18T20:00:00.000Z',
+      updatedAt: '2026-08-17T22:50:00.000Z',
+      source: 'retroactive-repair',
+      consumed: true,
+      slotIndex: 0,
+    },
+    resourceAccess: {
+      role: 'editor',
+      ownerUserId: 'shared-owner',
+      ownerTimezone: 'UTC',
+      canViewHistory: true,
+      canViewSchedule: true,
+    },
+  }
+
+  const next = getNextDose([weekly], new Date('2026-08-17T22:00:00.000Z'))
+
+  assert.equal(next.scheduledAt.toISOString(), '2026-08-24T21:36:00.000Z')
 })
 
 test('keeps the latest overdue every-N-days dose actionable', () => {
@@ -829,7 +965,7 @@ test('adds a past dose from today to history, schedule, and future recurrence', 
   assert.equal(next.scheduledAt.getMinutes(), 30)
 })
 
-test('anchors every-days dates to a manual dose while preserving clock time', () => {
+test('anchors every-days dates and time to the latest manual dose', () => {
   const med = medication({
     type: 'day-interval',
     intervalDays: 3,
@@ -844,11 +980,11 @@ test('anchors every-days dates to a manual dose while preserving clock time', ()
   assert.equal(new Date(updated.schedule.anchorAt).getDate(), 6)
   assert.equal(new Date(updated.schedule.anchorAt).getMinutes(), 0)
   assert.equal(next.scheduledAt.getDate(), 10)
-  assert.equal(next.scheduledAt.getHours(), 9)
-  assert.equal(next.scheduledAt.getMinutes(), 0)
+  assert.equal(next.scheduledAt.getHours(), 8)
+  assert.equal(next.scheduledAt.getMinutes(), 20)
 })
 
-test('anchors weekly dates to a manual dose while preserving clock time', () => {
+test('anchors weekly dates and time to the latest manual dose', () => {
   const med = medication({
     type: 'weekly',
     intervalHours: 168,
@@ -859,11 +995,11 @@ test('anchors weekly dates to a manual dose while preserving clock time', () => 
   const updated = addTakenHistoryRecord(med, 'calendar-dose', '2026-08-07', '14:20')
   const next = getNextDose([updated], new Date('2026-08-07T14:21:00'))
 
-  assert.deepEqual(updated.times, ['09:00'])
+  assert.deepEqual(updated.times, ['14:20'])
   assert.equal(next.scheduledAt.getDay(), 5)
   assert.equal(next.scheduledAt.getDate(), 14)
-  assert.equal(next.scheduledAt.getHours(), 9)
-  assert.equal(next.scheduledAt.getMinutes(), 0)
+  assert.equal(next.scheduledAt.getHours(), 14)
+  assert.equal(next.scheduledAt.getMinutes(), 20)
 })
 
 test('counts skipped doses as missed without changing last taken', () => {
@@ -947,7 +1083,7 @@ test('overrides a taken dose date, time, and injection site together', () => {
   assert.equal(updated.history[0].injectionSite, 'right-upper')
 })
 
-test('editing an older dose leaves the live recurrence anchor unchanged', () => {
+test('editing an older dose becomes the latest manual recurrence anchor', () => {
   const med = {
     ...medication({
       type: 'day-interval',
@@ -971,13 +1107,14 @@ test('editing an older dose leaves the live recurrence anchor unchanged', () => 
   }
   const updated = overrideTakenDate(med, 'older-dose', '2026-08-04', '07:30')
 
-  assert.equal(updated.schedule.anchorAt, med.schedule.anchorAt)
-  assert.deepEqual(updated.schedule.changes, [])
-  assert.equal(updated.history[0].scheduledAt, med.history[0].scheduledAt)
+  assert.equal(updated.recurrenceAnchor.source, 'taken-edit')
+  assert.equal(updated.recurrenceAnchor.consumed, true)
+  assert.equal(new Date(updated.recurrenceAnchor.at).getHours(), 7)
+  assert.equal(new Date(updated.recurrenceAnchor.at).getMinutes(), 30)
   assert.equal(new Date(updated.history[0].takenAt).getMinutes(), 30)
 })
 
-test('adding older history does not move the current recurrence anchor', () => {
+test('adding older history becomes the latest manual recurrence anchor', () => {
   const med = {
     ...medication({
       type: 'interval',
@@ -995,8 +1132,48 @@ test('adding older history does not move the current recurrence anchor', () => {
   }
   const updated = addTakenHistoryRecord(med, 'older-dose', '2026-08-05', '10:00')
 
-  assert.equal(updated.schedule.anchorAt, med.schedule.anchorAt)
-  assert.deepEqual(updated.schedule.changes, [])
+  assert.equal(updated.recurrenceAnchor.source, 'manual-taken')
+  assert.equal(updated.recurrenceAnchor.consumed, true)
+  assert.equal(new Date(updated.recurrenceAnchor.at).getDate(), 5)
+  assert.equal(new Date(updated.recurrenceAnchor.at).getHours(), 10)
+})
+
+test('the latest manual action replaces the interval recurrence anchor', () => {
+  const takenAt = new Date('2026-08-17T12:00:00.000Z')
+  const taken = setRecurrenceAnchor({
+    ...medication({
+      type: 'interval',
+      intervalHours: 12,
+      weekdays: [],
+      anchorAt: takenAt.toISOString(),
+      changes: [],
+    }, ['12:00', '00:00']),
+    history: [{
+      id: 'carprofen-noon',
+      scheduledAt: takenAt.toISOString(),
+      takenAt: takenAt.toISOString(),
+      status: 'on-time',
+    }],
+    resourceAccess: {
+      role: 'owner',
+      ownerUserId: 'carprofen-owner',
+      ownerTimezone: 'UTC',
+    },
+  }, takenAt, 'taken', {
+    consumed: true,
+    scheduledAt: takenAt,
+    updatedAt: new Date('2026-08-17T12:01:00.000Z'),
+  })
+
+  const edited = anchorMedicationSchedule({
+    ...taken,
+    times: ['23:00'],
+  }, new Date('2026-08-17T14:00:00.000Z'))
+  const next = getNextDose([edited], new Date('2026-08-17T14:00:00.000Z'))
+
+  assert.equal(edited.recurrenceAnchor.source, 'schedule-edit')
+  assert.equal(edited.recurrenceAnchor.consumed, false)
+  assert.equal(next.scheduledAt.toISOString(), '2026-08-17T23:00:00.000Z')
 })
 
 test('adds and removes manually recorded doses while updating inventory and last taken', () => {
@@ -1043,4 +1220,28 @@ test('builds multiple future push reminders without completed or disabled doses'
   assert.equal(reminders[0].icon, '/syringe-icon.svg')
   assert.notEqual(reminders[0].tag, reminders[1].tag)
   assert.deepEqual(reminderOffsets({ advanceMinutes: [15, 0, 15] }), [0, 15])
+})
+
+test('creates a unique notification for every scheduled dose occurrence', () => {
+  const medications = ['Gabapentin', 'Carprofen', 'Animax Ointment'].map((name, index) => ({
+    ...medication({
+      type: 'interval',
+      intervalHours: 12,
+      weekdays: [],
+      anchorAt: new Date(2026, 7, 10, 10, 24 + Math.min(index, 1)).toISOString(),
+      changes: [],
+    }, ['10:24', '22:24']),
+    id: `notification-medication-${index}`,
+    name,
+  }))
+  const reminders = getUpcomingReminders(
+    medications,
+    new Date(2026, 7, 10, 9),
+    0,
+  )
+
+  assert.equal(reminders.length, 6)
+  assert.equal(new Set(reminders.map(({ id }) => id)).size, 6)
+  assert.equal(new Set(reminders.map(({ tag }) => tag)).size, 6)
+  assert.ok(reminders.every(({ tag, scheduledAt }) => tag.includes(scheduledAt)))
 })

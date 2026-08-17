@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
 import {
   clearPendingInviteToken,
   pendingInviteToken,
@@ -36,6 +36,10 @@ async function api(path, options = {}) {
 }
 
 export function AuthProvider({ children }) {
+  const timezoneSync = useRef({ pending: null, accepted: null })
+  const [deviceTimezone, setDeviceTimezone] = useState(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+  )
   const [inviteToken, setInviteToken] = useState(
     () => isLocalPreview || !sharingEnabled ? null : retainInviteToken(),
   )
@@ -79,6 +83,50 @@ export function AuthProvider({ children }) {
       })
       .catch((error) => console.error('Could not accept invitation:', error))
   }, [inviteToken, user])
+
+  useEffect(() => {
+    if (isLocalPreview) return
+    const refresh = () => {
+      setDeviceTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
+    }
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!user || isLocalPreview) return
+    if (deviceTimezone === user.timezone) return
+    const syncKey = `${deviceTimezone}|${user.timezone}`
+    if (
+      timezoneSync.current.pending === deviceTimezone ||
+      timezoneSync.current.accepted === syncKey
+    ) return
+    timezoneSync.current.pending = deviceTimezone
+    let active = true
+    api('/api/auth/profile/timezone', {
+      method: 'PUT',
+      body: JSON.stringify({ timezone: deviceTimezone }),
+    })
+      .then((data) => {
+        timezoneSync.current.pending = null
+        if (active) {
+          timezoneSync.current.accepted = `${deviceTimezone}|${data.timezone}`
+          setUser(data)
+          window.dispatchEvent(new CustomEvent('chrona:timezone-updated'))
+        }
+      })
+      .catch((error) => {
+        timezoneSync.current.pending = null
+        console.error('Could not synchronize account timezone:', error)
+      })
+    return () => {
+      active = false
+    }
+  }, [deviceTimezone, user])
 
   const login = useCallback(async (username, password, remember) => {
     const data = await api('/api/auth/login', {
