@@ -58,6 +58,7 @@ const viewerRow = {
     name: 'Metformin',
     times: ['08:00'],
     schedule: { type: 'daily' },
+    scheduleAdjustmentPreference: 'yes',
     notifications: { enabled: true },
     paused: true,
     pausePeriods: [{ start: '2025-01-01T00:00:00.000Z', end: null }],
@@ -99,7 +100,7 @@ test('resource list strips embedded history for a viewer without history access'
   })
   assert.equal(body.medications[0].data.id, 'client-med-1')
   assert.equal('history' in body.medications[0].data, false)
-  for (const key of ['times', 'schedule', 'notifications', 'paused', 'pausePeriods']) {
+  for (const key of ['times', 'schedule', 'scheduleAdjustmentPreference', 'notifications', 'paused', 'pausePeriods']) {
     assert.equal(key in body.medications[0].data, false)
   }
   assert.equal(JSON.stringify(body).includes('must-not-leak'), false)
@@ -263,6 +264,7 @@ test('list-only editors cannot overwrite schedule fields hidden from them', asyn
   assert.equal(savedData.name, 'Updated name')
   assert.deepEqual(savedData.times, viewerRow.medication_data.times)
   assert.deepEqual(savedData.schedule, viewerRow.medication_data.schedule)
+  assert.equal(savedData.scheduleAdjustmentPreference, viewerRow.medication_data.scheduleAdjustmentPreference)
   assert.deepEqual(savedData.notifications, viewerRow.medication_data.notifications)
   assert.equal(savedData.paused, viewerRow.medication_data.paused)
   assert.deepEqual(savedData.pausePeriods, viewerRow.medication_data.pausePeriods)

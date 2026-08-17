@@ -16,6 +16,7 @@ import {
   addTakenHistoryRecord,
   adjustScheduleAfterDose,
   anchorMedicationSchedule,
+  doseScheduleAdjustmentDecision,
   formatDateTime,
   formatRelative,
   getActionableDoses,
@@ -424,7 +425,7 @@ function MedicationForm({ initial, onSave, onClose }) {
     return {
       ...emptyForm,
       name: initial.name, dose: initial.dose, notes: initial.notes,
-      times: scheduleType === 'interval' ? wakingHourSchedule(intervalHours) : initial.times,
+      times: initial.times?.length ? initial.times : wakingHourSchedule(intervalHours),
       scheduleType,
       intervalHours,
       weeklyMode: storedScheduleType === 'weekly' ? 'weekdays' : 'interval',
@@ -1080,7 +1081,15 @@ function InjectionSiteMap({ medication, onSelect, compact = false }) {
   )
 }
 
-function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory, onOverrideTakenHistory }) {
+function MedicationDetails({
+  medication,
+  now,
+  onClose,
+  onEdit,
+  onAdjustInventory,
+  onOverrideTakenHistory,
+  onScheduleAdjustmentPreference,
+}) {
   const [pastMonths, setPastMonths] = useState(6)
   const [futureMonths, setFutureMonths] = useState(6)
   const [selectedDate, setSelectedDate] = useState(null)
@@ -1193,6 +1202,27 @@ function MedicationDetails({ medication, now, onClose, onEdit, onAdjustInventory
             </div>}
           </div>
         </div>
+        {permissions.canViewSchedule && medication.schedule?.type === 'daily' && (
+          <label className="detail-schedule-adjustment">
+            <input type="checkbox"
+              checked={medication.scheduleAdjustmentPreference === 'yes'}
+              disabled={!permissions.canEdit}
+              onChange={(event) => onScheduleAdjustmentPreference(
+                medication,
+                event.target.checked ? 'yes' : 'no',
+              )} />
+            <span>
+              <strong>Automatic schedule adjustments</strong>
+              <small>
+                {medication.scheduleAdjustmentPreference === 'yes'
+                  ? 'Enabled'
+                  : medication.scheduleAdjustmentPreference === 'no'
+                    ? 'Disabled'
+                    : 'Ask before changing times'}
+              </small>
+            </span>
+          </label>
+        )}
         {medication.trackInjectionSite && <section className="detail-site-map">
           <InjectionSiteMap medication={medication} compact />
         </section>}
@@ -1507,6 +1537,8 @@ function App({ colorScheme = 'dark' }) {
   const [showForm, setShowForm] = useState(false)
   const [notice, setNotice] = useState('')
   const [pendingDose, setPendingDose] = useState(null)
+  const [pendingScheduleAdjustment, setPendingScheduleAdjustment] = useState(null)
+  const [rememberScheduleAdjustment, setRememberScheduleAdjustment] = useState(false)
   const [viewingMedication, setViewingMedication] = useState(null)
   const pendingViewingMedicationId = useRef(initialNavigation.viewingMedicationId)
   const [confirmingDelete, setConfirmingDelete] = useState(null)
@@ -1665,37 +1697,64 @@ function App({ colorScheme = 'dark' }) {
       setPendingDose(dose)
       return
     }
-    completeTaken(dose)
+    requestTakenCompletion(dose)
   }
 
-  const completeTaken = (dose, injectionSite = null) => {
+  const requestTakenCompletion = (dose, injectionSite = null) => {
+    const takenAt = new Date()
+    const decision = doseScheduleAdjustmentDecision(dose.medication, dose, takenAt)
+    setPendingDose(null)
+    if (decision.prompt) {
+      setRememberScheduleAdjustment(false)
+      setPendingScheduleAdjustment({ dose, injectionSite, takenAt })
+      return
+    }
+    completeTaken(dose, injectionSite, takenAt, decision.adjustSchedule)
+  }
+
+  const completeTaken = (
+    dose,
+    injectionSite = null,
+    takenAt = new Date(),
+    adjustSchedule = true,
+    rememberedPreference = null,
+  ) => {
     const permissions = medicationPermissions(dose.medication)
     if (!permissions.canEdit || !permissions.canViewHistory) return
     unlockSounds()
-    const takenAt = new Date()
-    const adjustment = adjustScheduleAfterDose(dose.medication, dose, takenAt)
-    const scheduledAt = adjustment.scheduledAt.toISOString()
-    const originalScheduledAt = adjustment.originalScheduledAt?.toISOString() || null
-    setMedications((items) => items.map((med) => med.id !== dose.medication.id ? med : setRecurrenceAnchor({
-      ...med,
-      history: [...med.history.filter((entry) => (entry.originalScheduledAt || entry.scheduledAt) !== dose.scheduledAt.toISOString()), {
-        id: crypto.randomUUID(), scheduledAt, takenAt: takenAt.toISOString(),
-        originalScheduledAt,
-        status: isOnTime(dose.scheduledAt, takenAt) ? 'on-time' : 'late',
-        injectionSite,
-      }],
-      times: adjustment.times,
-      schedule: adjustment.schedule,
-      inventory: med.inventory?.remaining == null ? med.inventory : {
-        ...med.inventory,
-        remaining: Math.max(0, inventoryInteger(med.inventory.remaining) - 1),
-      },
-    }, takenAt, 'taken', {
-      consumed: true,
-      scheduledAt: dose.scheduledAt,
-      slotIndex: dose.slotIndex,
-    })))
+    setMedications((items) => items.map((med) => {
+      if (med.id !== dose.medication.id) return med
+      const adjustment = adjustScheduleAfterDose(
+        med,
+        { ...dose, medication: med },
+        takenAt,
+        { adjustSchedule },
+      )
+      const scheduledAt = adjustment.scheduledAt.toISOString()
+      const originalScheduledAt = adjustment.originalScheduledAt?.toISOString() || null
+      return setRecurrenceAnchor({
+        ...med,
+        ...(rememberedPreference ? { scheduleAdjustmentPreference: rememberedPreference } : {}),
+        history: [...med.history.filter((entry) => (entry.originalScheduledAt || entry.scheduledAt) !== dose.scheduledAt.toISOString()), {
+          id: crypto.randomUUID(), scheduledAt, takenAt: takenAt.toISOString(),
+          originalScheduledAt,
+          status: isOnTime(dose.scheduledAt, takenAt) ? 'on-time' : 'late',
+          injectionSite,
+        }],
+        times: adjustment.times,
+        schedule: adjustment.schedule,
+        inventory: med.inventory?.remaining == null ? med.inventory : {
+          ...med.inventory,
+          remaining: Math.max(0, inventoryInteger(med.inventory.remaining) - 1),
+        },
+      }, adjustSchedule ? takenAt : dose.scheduledAt, 'taken', {
+        consumed: true,
+        scheduledAt: dose.scheduledAt,
+        slotIndex: dose.slotIndex,
+      })
+    }))
     setPendingDose(null)
+    setPendingScheduleAdjustment(null)
     playComplete()
   }
 
@@ -1785,6 +1844,13 @@ function App({ colorScheme = 'dark' }) {
         remaining: Math.max(0, inventoryInteger(item.inventory?.remaining) + Math.round(amount)),
       },
     }))
+  }
+
+  const setScheduleAdjustmentPreference = (medication, preference) => {
+    if (!medicationPermissions(medication).canEdit) return
+    setMedications((items) => items.map((item) => item.id === medication.id
+      ? { ...item, scheduleAdjustmentPreference: preference }
+      : item))
   }
 
   const changeTakenHistory = (medication, edits, deletedRecordIds, newDose) => {
@@ -1974,10 +2040,45 @@ function App({ colorScheme = 'dark' }) {
         onClose={() => setViewingMedication(null)}
         onAdjustInventory={adjustInventory}
         onOverrideTakenHistory={changeTakenHistory}
+        onScheduleAdjustmentPreference={setScheduleAdjustmentPreference}
         onEdit={(medication) => { setViewingMedication(null); setEditing(medication) }} />}
       {sharingEnabled && showSharing && <SharingModal
         sharing={sharing} onClose={() => setShowSharing(false)} />}
-      {pendingDose && <InjectionSitePicker medication={pendingDose.medication} onSelect={(site) => completeTaken(pendingDose, site)} onClose={() => setPendingDose(null)} />}
+      {pendingDose && <InjectionSitePicker medication={pendingDose.medication} onSelect={(site) => requestTakenCompletion(pendingDose, site)} onClose={() => setPendingDose(null)} />}
+      {pendingScheduleAdjustment && (
+        <div className="modal-overlay" onClick={() => setPendingScheduleAdjustment(null)}>
+          <section className="modal schedule-adjustment-modal" role="dialog" aria-modal="true"
+            aria-labelledby="schedule-adjustment-title" onClick={(event) => event.stopPropagation()}>
+            <h3 className="modal-title" id="schedule-adjustment-title">Update schedule?</h3>
+            <p className="modal-body">
+              Would you like to update following medications to be at{' '}
+              {pendingScheduleAdjustment.takenAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}{' '}
+              adjusted time?
+            </p>
+            <label className="remember-adjustment">
+              <input type="checkbox" checked={rememberScheduleAdjustment}
+                onChange={(event) => setRememberScheduleAdjustment(event.target.checked)} />
+              <span>Do not ask again</span>
+            </label>
+            <div className="modal-actions">
+              <button className="ghost-btn" onClick={() => completeTaken(
+                pendingScheduleAdjustment.dose,
+                pendingScheduleAdjustment.injectionSite,
+                pendingScheduleAdjustment.takenAt,
+                false,
+                rememberScheduleAdjustment ? 'no' : null,
+              )}>No</button>
+              <button className="primary-btn" onClick={() => completeTaken(
+                pendingScheduleAdjustment.dose,
+                pendingScheduleAdjustment.injectionSite,
+                pendingScheduleAdjustment.takenAt,
+                true,
+                rememberScheduleAdjustment ? 'yes' : null,
+              )}>Yes</button>
+            </div>
+          </section>
+        </div>
+      )}
       {confirmingDelete && (
         <div className="modal-overlay" onClick={() => setConfirmingDelete(null)}>
           <div className="modal delete-confirm-modal" onClick={(event) => event.stopPropagation()}>

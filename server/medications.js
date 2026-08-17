@@ -112,7 +112,7 @@ function parseVersion(request) {
 function resourceFromRow(row) {
   const data = isObject(row.medication_data) ? { ...row.medication_data } : {}
   if (row.access_role !== 'owner' && !row.can_view_history) {
-    for (const key of ['history', 'recurrenceAnchor', 'times', 'schedule', 'notifications', 'paused', 'pausePeriods']) {
+    for (const key of ['history', 'recurrenceAnchor', 'times', 'schedule', 'scheduleAdjustmentPreference', 'notifications', 'paused', 'pausePeriods']) {
       delete data[key]
     }
   }
@@ -633,7 +633,7 @@ export function createMedicationsRouter(poolFn = pool, options = {}) {
         if (!canEdit(current)) return { forbidden: true }
         if (Number(current.version) !== version) return { conflict: current.version }
         const nextData = current.access_role === 'editor' && !current.can_view_history
-          ? ['history', 'recurrenceAnchor', 'times', 'schedule', 'notifications', 'paused', 'pausePeriods']
+          ? ['history', 'recurrenceAnchor', 'times', 'schedule', 'scheduleAdjustmentPreference', 'notifications', 'paused', 'pausePeriods']
             .reduce((merged, key) => {
               if (current.medication_data?.[key] !== undefined) {
                 merged[key] = current.medication_data[key]

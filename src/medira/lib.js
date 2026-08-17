@@ -1,6 +1,7 @@
 const MINUTE = 60 * 1000
 const DAY = 24 * 60 * MINUTE
 export const ON_TIME_WINDOW = 10 * MINUTE
+export const SCHEDULE_ADJUSTMENT_THRESHOLD = 60 * MINUTE
 const MISSED_WINDOW = 30 * MINUTE
 const dateFormatters = new Map()
 const dateTimeFormatters = new Map()
@@ -283,6 +284,28 @@ function scheduleFor(medication) {
 
 function isDoseRelativeSchedule(schedule) {
   return schedule.type === 'daily' || schedule.type === 'interval'
+}
+
+export function doseScheduleAdjustmentDecision(medication, dose, takenAtValue) {
+  const schedule = scheduleFor(medication)
+  if (schedule.type !== 'daily') {
+    return { adjustSchedule: true, prompt: false }
+  }
+  const scheduledAt = new Date(dose.scheduledAt)
+  const takenAt = new Date(takenAtValue)
+  if (Number.isNaN(scheduledAt.getTime()) || Number.isNaN(takenAt.getTime())) {
+    return { adjustSchedule: false, prompt: false }
+  }
+  if (Math.abs(takenAt - scheduledAt) <= SCHEDULE_ADJUSTMENT_THRESHOLD) {
+    return { adjustSchedule: false, prompt: false }
+  }
+  if (medication.scheduleAdjustmentPreference === 'yes') {
+    return { adjustSchedule: true, prompt: false }
+  }
+  if (medication.scheduleAdjustmentPreference === 'no') {
+    return { adjustSchedule: false, prompt: false }
+  }
+  return { adjustSchedule: false, prompt: true }
 }
 
 function instantForCalendarTime(dateKey, time, timeZone) {
@@ -871,13 +894,21 @@ export function medicationCalendarMonths(medication, now = new Date(), range = n
   return range ? months : months.reverse()
 }
 
-export function adjustScheduleAfterDose(medication, dose, takenAt) {
+export function adjustScheduleAfterDose(
+  medication,
+  dose,
+  takenAt,
+  { adjustSchedule = true } = {},
+) {
   const schedule = scheduleFor(medication)
   const shiftedAt = new Date(takenAt)
   shiftedAt.setSeconds(0, 0)
   const scheduledAt = new Date(dose.scheduledAt)
   scheduledAt.setSeconds(0, 0)
-  const shifted = isDoseRelativeSchedule(schedule) && shiftedAt.getTime() !== scheduledAt.getTime()
+  const shifted =
+    adjustSchedule &&
+    isDoseRelativeSchedule(schedule) &&
+    shiftedAt.getTime() !== scheduledAt.getTime()
   const shiftMinutes = Math.round((shiftedAt - scheduledAt) / MINUTE)
   return {
     shifted,
@@ -1031,8 +1062,9 @@ export function overrideScheduledTime(medication, dose, time) {
   }
   const schedule = scheduleFor(medication)
   const scheduledAt = atTime(dose.scheduledAt, time)
+  const shiftMinutes = Math.round((scheduledAt - dose.scheduledAt) / MINUTE)
   const times = schedule.type === 'interval'
-    ? medication.times
+    ? medication.times.map((current) => shiftTime(current, shiftMinutes)).sort()
     : medication.times.map((current, index) => index === dose.slotIndex ? time : current)
   return {
     scheduledAt,

@@ -547,6 +547,15 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; overflow-x: cl
 .detail-inventory > span, .detail-inventory > strong { grid-column: 1; }
 .detail-inventory-controls { display: flex; grid-column: 2; grid-row: 1 / span 2; align-items: center; gap: 8px; margin-left: auto; }
 .detail-inventory-controls .icon-btn { width: 32px; height: 32px; }
+.detail-schedule-adjustment { display: flex !important; align-items: center; gap: 8px; margin: 20px 0 0 !important; padding: 16px; color: var(--text) !important; background: var(--bg-2); border: 1px solid var(--line); }
+.detail-schedule-adjustment input, .remember-adjustment input { width: 18px; height: 18px; flex: none; margin: 0; accent-color: var(--accent); }
+.detail-schedule-adjustment > span { display: flex; flex-direction: column; gap: 2px; }
+.detail-schedule-adjustment strong { font-size: var(--font-sm); }
+.detail-schedule-adjustment small { color: var(--muted); font-size: var(--font-xs); font-weight: 400; }
+.schedule-adjustment-modal { width: min(400px, 100%); max-height: none; overflow: visible; border-bottom: 4px solid var(--accent); }
+.schedule-adjustment-modal .modal-title { font-size: var(--font-md); }
+.schedule-adjustment-modal .modal-body { color: var(--muted); font-size: var(--font-sm); line-height: 1.5; }
+.remember-adjustment { display: flex !important; min-height: 40px; align-items: center; gap: 8px; margin: 16px 0 !important; color: var(--text) !important; }
 .detail-site-map { padding: 16px 0 8px; }
 .thigh-map.compact { gap: 16px; padding-inline: 40px; }
 .thigh-map.compact .thigh-shape { height: 155px; }

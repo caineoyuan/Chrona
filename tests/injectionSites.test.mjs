@@ -5,6 +5,7 @@ import {
   adjustScheduleAfterDose,
   adherenceFor,
   anchorMedicationSchedule,
+  doseScheduleAdjustmentDecision,
   formatRelative,
   getActionableDoses,
   getDosesForDay,
@@ -902,6 +903,48 @@ test('undoes a taken dose and its automatic daily shift', () => {
   assert.equal(restored.schedule.changes.length, 0)
 })
 
+test('daily doses within one hour keep the scheduled recurrence anchor', () => {
+  const med = medication({ type: 'daily', intervalHours: 24, weekdays: [], anchorAt: null, changes: [] })
+  const scheduledAt = new Date('2026-08-06T11:00:00')
+
+  assert.deepEqual(
+    doseScheduleAdjustmentDecision(
+      med,
+      { scheduledAt },
+      new Date('2026-08-06T12:00:00'),
+    ),
+    { adjustSchedule: false, prompt: false },
+  )
+  const adjustment = adjustScheduleAfterDose(
+    med,
+    { medication: med, scheduledAt, slotIndex: 0 },
+    new Date('2026-08-06T11:45:00'),
+    { adjustSchedule: false },
+  )
+  assert.equal(adjustment.scheduledAt.toISOString(), scheduledAt.toISOString())
+  assert.equal(adjustment.originalScheduledAt, null)
+  assert.deepEqual(adjustment.times, ['11:00'])
+})
+
+test('daily doses over one hour ask unless the medication remembers yes or no', () => {
+  const med = medication({ type: 'daily', intervalHours: 24, weekdays: [], anchorAt: null, changes: [] })
+  const dose = { scheduledAt: new Date('2026-08-06T11:00:00') }
+  const takenAt = new Date('2026-08-06T12:01:00')
+
+  assert.deepEqual(
+    doseScheduleAdjustmentDecision(med, dose, takenAt),
+    { adjustSchedule: false, prompt: true },
+  )
+  assert.deepEqual(
+    doseScheduleAdjustmentDecision({ ...med, scheduleAdjustmentPreference: 'yes' }, dose, takenAt),
+    { adjustSchedule: true, prompt: false },
+  )
+  assert.deepEqual(
+    doseScheduleAdjustmentDecision({ ...med, scheduleAdjustmentPreference: 'no' }, dose, takenAt),
+    { adjustSchedule: false, prompt: false },
+  )
+})
+
 test('overrides daily, interval, and weekly times from a dose card', () => {
   const scheduledAt = new Date('2026-08-06T11:00:00')
   const daily = medication({ type: 'daily', intervalHours: 24, weekdays: [], anchorAt: null, changes: [] })
@@ -911,6 +954,7 @@ test('overrides daily, interval, and weekly times from a dose card', () => {
   const intervalOverride = overrideScheduledTime(interval, { scheduledAt, slotIndex: 0 }, '13:30')
   assert.equal(new Date(intervalOverride.schedule.anchorAt).getHours(), 13)
   assert.equal(new Date(intervalOverride.schedule.anchorAt).getMinutes(), 30)
+  assert.deepEqual(intervalOverride.times, ['13:30'])
 
   const weekly = medication({ type: 'weekly', intervalHours: 168, weekdays: [4], anchorAt: null, changes: [] })
   const weeklyOverride = overrideScheduledTime(weekly, { scheduledAt, slotIndex: 0 }, '13:30')
