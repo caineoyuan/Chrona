@@ -255,7 +255,7 @@ function StreakCalendar({ set, readOnly, onCompletionChange }) {
                     onClick={() => setSelectedDay(day)}>
                     {day.completed || day.frozen
                       ? <span className="streak-calendar-marker">
-                          <Icon name={day.completed ? 'fire-element' : 'snowflake'} size={48} />
+                          <Icon name={day.completed ? 'fire-element' : 'snowflake'} size={40} />
                           <span className="streak-calendar-day-number">{day.day}</span>
                         </span>
                       : <span className="streak-calendar-day-number">{day.day}</span>}
