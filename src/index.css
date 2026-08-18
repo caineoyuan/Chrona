@@ -2296,15 +2296,21 @@ html[data-theme='light'] .workspace-chrona .notify-btn.active .gi path {
   height: 28px;
   place-items: center;
 }
-.streak-calendar-day.current .streak-calendar-day-number::after {
+.streak-calendar-day.current button > .streak-calendar-day-number::after,
+.streak-calendar-day.current .streak-calendar-marker::after {
   position: absolute;
-  bottom: 1px;
   width: 4px;
   height: 4px;
   background: #e4e4df;
   border-radius: 50%;
   box-shadow: 0 0 3px rgba(255, 255, 255, .7);
   content: '';
+}
+.streak-calendar-day.current button > .streak-calendar-day-number::after {
+  bottom: 1px;
+}
+.streak-calendar-day.current .streak-calendar-marker::after {
+  bottom: -3px;
 }
 .streak-calendar-marker {
   position: relative;
