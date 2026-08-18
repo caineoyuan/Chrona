@@ -1292,6 +1292,18 @@ html[data-theme='light'] .workspace-chrona .card-actions .action-glyph [data-par
   display: flex;
   gap: 4px;
 }
+.weekly-streak .streak-count {
+  flex-basis: 100%;
+}
+.weekly-streak .fire-strip {
+  margin-left: auto;
+}
+.fire-strip.compact {
+  gap: 0;
+}
+.fire-strip.compact .fire-cell {
+  width: 16px;
+}
 .fire-cell {
   width: 22px;
   text-align: center;

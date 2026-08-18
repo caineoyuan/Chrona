@@ -27,10 +27,10 @@ import {
   WEEKDAYS,
 } from '../lib.js'
 
-function FireStrip({ set }) {
+function FireStrip({ set, compact = false }) {
   const days = lastScheduledDates(set, 7)
   return (
-    <div className="fire-strip">
+    <div className={`fire-strip${compact ? ' compact' : ''}`}>
       {days.map((d) => {
         const k = dateKey(d)
         const done = Boolean(set.completions?.[k])
@@ -40,7 +40,7 @@ function FireStrip({ set }) {
           <div key={k} className="fire-cell" title={`${WEEKDAYS[d.getDay()]} ${k}`}>
             <Icon
               name={frozen ? 'snowflake' : 'fire-element'}
-              size={18}
+              size={compact ? 16 : 18}
               className={`fire fire-${state}`}
             />
           </div>
@@ -294,7 +294,7 @@ function SetCard({
         </div>
 
         {(set.trackStreak || buddyStreak) && (
-          <div className="card-streak">
+          <div className={`card-streak${weekly ? ' weekly-streak' : ''}`}>
             {set.trackStreak && <div className="streak-count">
               <Icon
                 name="fire-element"
@@ -309,7 +309,8 @@ function SetCard({
                   {participatingFriend && <BuddyRing streak={buddyStreak} />}
                   {weekly && <WeeklyRing set={set} />}
                 </div>
-              : <FireStrip set={set} />}
+              : null}
+            {(weekly || !participatingFriend) && <FireStrip set={set} compact={weekly} />}
           </div>
         )}
         {!set.trackStreak && !buddyStreak && (
