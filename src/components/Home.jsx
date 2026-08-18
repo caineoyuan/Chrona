@@ -153,6 +153,15 @@ function SetCard({
     !member.removedAt && member.userId !== String(user.id)) || []
   const totalCompletions = Object.values(set.completions || {})
     .filter(Boolean).length
+  const streakCounter = set.trackStreak && <div className="streak-count">
+    <Icon
+      name="fire-element"
+      size={18}
+      className={`streak-flame ${flameLit ? '' : 'fire-missed'}`}
+    />
+    <span className="streak-num">{streak}</span>
+    <span className="streak-label">{weekly ? 'week streak' : 'day streak'}</span>
+  </div>
 
   const [dx, setDx] = useState(0)
   const dxRef = useRef(0)
@@ -296,28 +305,22 @@ function SetCard({
 
         {(set.trackStreak || buddyStreak) && (
           <div className={`card-streak${weekly ? ' weekly-streak' : ''}`}>
-            {set.trackStreak && <div className="streak-count">
-              <Icon
-                name="fire-element"
-                size={18}
-                className={`streak-flame ${flameLit ? '' : 'fire-missed'}`}
-              />
-              <span className="streak-num">{streak}</span>
-              <span className="streak-label">{weekly ? 'week streak' : 'day streak'}</span>
-            </div>}
             {weekly
-              ? <div className="weekly-streak-summary">
+              ? <>
+                <div className="weekly-streak-progress">
+                  {streakCounter}
+                  <FireStrip set={set} compact />
+                </div>
                   <div className="card-ring-counters">
                     {participatingFriend && <BuddyRing streak={buddyStreak} />}
                     <WeeklyRing set={set} />
                   </div>
-                  <FireStrip set={set} compact />
-                </div>
+                </>
               : participatingFriend
-                ? <div className="card-ring-counters">
-                  {participatingFriend && <BuddyRing streak={buddyStreak} />}
-                </div>
-                : <FireStrip set={set} />}
+                ? <>{streakCounter}<div className="card-ring-counters">
+                    <BuddyRing streak={buddyStreak} />
+                  </div></>
+                : <>{streakCounter}<FireStrip set={set} /></>}
           </div>
         )}
         {!set.trackStreak && !buddyStreak && (

@@ -1295,10 +1295,12 @@ html[data-theme='light'] .workspace-chrona .card-actions .action-glyph [data-par
 .card-streak.weekly-streak {
   margin-top: 14px;
 }
-.weekly-streak-summary {
+.weekly-streak-progress {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+}
+.weekly-streak > .card-ring-counters {
   margin-left: auto;
 }
 .fire-strip.compact {
