@@ -2317,6 +2317,9 @@ html[data-theme='light'] .workspace-chrona .notify-btn.active .gi path {
 .streak-calendar-day.completed .streak-calendar-marker .streak-calendar-day-number {
   transform: translateY(4px);
 }
+.streak-calendar-day.completed .streak-calendar-marker.non-streak .streak-calendar-day-number {
+  transform: none;
+}
 .streak-calendar-day.completed button {
   color: var(--text);
   opacity: 1;
