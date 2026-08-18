@@ -1664,6 +1664,18 @@ function App({ colorScheme = 'dark' }) {
   }, [now])
   const todayDoses = useMemo(() => getActionableDoses(scheduleMedications, now), [scheduleMedications, now])
   const tomorrowDoses = useMemo(() => getDosesForDay(scheduleMedications, tomorrow), [scheduleMedications, tomorrow])
+  const nextAfterTomorrow = useMemo(() => {
+    if (tomorrowDoses.length) return null
+    const followingDay = new Date(tomorrow)
+    followingDay.setDate(followingDay.getDate() + 1)
+    followingDay.setHours(0, 0, 0, 0)
+    const dose = getNextDose(scheduleMedications, followingDay)
+    return dose
+      ? { ...dose, record: null, key: `next-${dose.medication.id}-${dose.scheduledAt.toISOString()}` }
+      : null
+  }, [scheduleMedications, tomorrow, tomorrowDoses])
+  const upcomingDoses = tomorrowDoses.length ? tomorrowDoses : nextAfterTomorrow ? [nextAfterTomorrow] : []
+  const upcomingDate = nextAfterTomorrow?.scheduledAt || tomorrow
   const takenToday = todayDoses.filter((dose) => dose.record?.status === 'on-time' || dose.record?.status === 'late').length
   const next = useMemo(() => getNextDose(scheduleMedications, now), [scheduleMedications, now])
   const localReminders = useMemo(
@@ -1946,11 +1958,13 @@ function App({ colorScheme = 'dark' }) {
             )}
             <section className="tomorrow-section" aria-labelledby="tomorrow-medications">
               <div className="tomorrow-head">
-                <h2 className="section-title" id="tomorrow-medications">Tomorrow’s medications</h2>
-                <span>{tomorrow.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+                <h2 className="section-title" id="tomorrow-medications">
+                  {tomorrowDoses.length ? 'Tomorrow’s medications' : 'Next up'}
+                </h2>
+                <span>{upcomingDate.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</span>
               </div>
-              {tomorrowDoses.length ? (
-                <div className="card-wrap schedule-card-wrap"><div className="card dose-list">{tomorrowDoses.map((dose) => <DoseCard key={dose.key} dose={dose}
+              {upcomingDoses.length ? (
+                <div className="card-wrap schedule-card-wrap"><div className="card dose-list">{upcomingDoses.map((dose) => <DoseCard key={dose.key} dose={dose}
                   onTaken={markTaken} onSkip={skipDose} onUndo={undoTaken} onTimeChange={overrideDoseTime} onOpen={setViewingMedication} />)}</div></div>
               ) : (
                 <div className="empty card-wrap schedule-card-wrap"><div className="card"><h3 className="card-title">No medications scheduled</h3></div></div>

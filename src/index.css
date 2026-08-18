@@ -2267,13 +2267,10 @@ html[data-theme='light'] .workspace-chrona .notify-btn.active .gi path {
   place-items: center;
 }
 .streak-calendar-day button {
-  display: flex;
+  display: grid;
   width: 48px;
   min-height: 56px;
-  align-items: center;
-  flex-direction: column;
-  justify-content: center;
-  gap: 2px;
+  place-items: center;
   padding: 0;
   color: var(--muted);
   background: transparent;
@@ -2289,13 +2286,31 @@ html[data-theme='light'] .workspace-chrona .notify-btn.active .gi path {
   color: var(--text);
   font-weight: 700;
 }
-.streak-calendar-day.current button > span:first-child {
+.streak-calendar-day-number {
   display: grid;
-  width: 16px;
+  min-width: 28px;
+  height: 28px;
+  place-items: center;
+}
+.streak-calendar-day.current .streak-calendar-day-number {
+  display: grid;
+  width: 28px;
   height: 28px;
   place-items: center;
   border: 1px solid var(--muted);
   border-radius: 50%;
+}
+.streak-calendar-marker {
+  position: relative;
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+}
+.streak-calendar-marker .streak-calendar-day-number {
+  position: absolute;
+  color: #201d18;
+  text-shadow: 0 1px 1px rgba(255, 255, 255, .45);
 }
 .streak-calendar-day.completed button {
   color: var(--text);

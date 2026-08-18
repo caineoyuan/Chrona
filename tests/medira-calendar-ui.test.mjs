@@ -25,3 +25,13 @@ test('Medira names weekly repeat days and fits multi-day countdowns', async () =
   assert.match(css, /\.ring-center strong\.extra-long \{[^}]*max-width: 104px;[^}]*font-size: var\(--font-sm\);/)
   assert.match(css, /strong\.extra-long \{[^}]*max-width: 80px;[^}]*font-size: var\(--font-xs\);/)
 })
+
+test('Medira shows the next scheduled dose when tomorrow is empty', async () => {
+  const source = await readFile(new URL('../src/medira/App.jsx', import.meta.url), 'utf8')
+
+  assert.match(source, /const nextAfterTomorrow = useMemo/)
+  assert.match(source, /getNextDose\(scheduleMedications, followingDay\)/)
+  assert.match(source, /tomorrowDoses\.length \? 'Tomorrow’s medications' : 'Next up'/)
+  assert.match(source, /const upcomingDate = nextAfterTomorrow\?\.scheduledAt \|\| tomorrow/)
+  assert.match(source, /upcomingDoses\.map\(\(dose\) => <DoseCard/)
+})

@@ -253,9 +253,12 @@ function StreakCalendar({ set, readOnly, onCompletionChange }) {
                   <button type="button" disabled={!day.editable || readOnly}
                     aria-label={`${day.completed ? 'Edit' : 'Add'} completion for ${day.dateKey}`}
                     onClick={() => setSelectedDay(day)}>
-                    <span>{day.day}</span>
-                    {day.completed && <Icon name="fire-element" size={16} />}
-                    {day.frozen && <Icon name="snowflake" size={16} />}
+                    {day.completed || day.frozen
+                      ? <span className="streak-calendar-marker">
+                          <Icon name={day.completed ? 'fire-element' : 'snowflake'} size={48} />
+                          <span className="streak-calendar-day-number">{day.day}</span>
+                        </span>
+                      : <span className="streak-calendar-day-number">{day.day}</span>}
                   </button>
                 </span>
               ))}
