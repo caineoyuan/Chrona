@@ -269,7 +269,7 @@ function SetCard({
             </button>
           </div>)}
         </div>}
-        <div className={`card-head${weekly ? ' weekly-card-head' : ''}${sharedPeople.length ? ' has-shared-people' : ''}`}>
+        <div className="card-head">
           <div>
             <h2 className="card-title">{set.name || 'Untitled'}</h2>
             {buddyStreak && <div className="streak-people" aria-label="People sharing this streak">
@@ -292,10 +292,6 @@ function SetCard({
                 })}
             </div>}
           </div>
-          {weekly && <div className="card-ring-counters">
-            {participatingFriend && <BuddyRing streak={buddyStreak} />}
-            <WeeklyRing set={set} />
-          </div>}
         </div>
 
         {(set.trackStreak || buddyStreak) && (
@@ -310,7 +306,13 @@ function SetCard({
               <span className="streak-label">{weekly ? 'week streak' : 'day streak'}</span>
             </div>}
             {weekly
-              ? <FireStrip set={set} compact />
+              ? <div className="weekly-streak-summary">
+                  <div className="card-ring-counters">
+                    {participatingFriend && <BuddyRing streak={buddyStreak} />}
+                    <WeeklyRing set={set} />
+                  </div>
+                  <FireStrip set={set} compact />
+                </div>
               : participatingFriend
                 ? <div className="card-ring-counters">
                   {participatingFriend && <BuddyRing streak={buddyStreak} />}

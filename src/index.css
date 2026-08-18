@@ -1292,16 +1292,13 @@ html[data-theme='light'] .workspace-chrona .card-actions .action-glyph [data-par
   display: flex;
   gap: 4px;
 }
-.weekly-card-head .card-ring-counters {
-  margin-left: auto;
-}
-.weekly-card-head.has-shared-people {
-  align-items: flex-end;
-}
 .card-streak.weekly-streak {
   margin-top: 14px;
 }
-.weekly-streak .fire-strip {
+.weekly-streak-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-left: auto;
 }
 .fire-strip.compact {
