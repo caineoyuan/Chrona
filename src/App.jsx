@@ -174,8 +174,18 @@ function Workspace({ theme }) {
   // If any set wants reminders and permission is already granted, refresh the
   // device's push subscription so background notifications keep working.
   useEffect(() => {
-    if (loaded && sets.some((s) => s.notify !== false) && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      subscribePush().catch(() => {})
+    if (!loaded || !sets.some((s) => s.notify !== false)
+      || typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+    const refreshPush = () => subscribePush().catch(() => {})
+    const refreshVisiblePush = () => {
+      if (document.visibilityState === 'visible') refreshPush()
+    }
+    refreshPush()
+    window.addEventListener('focus', refreshPush)
+    document.addEventListener('visibilitychange', refreshVisiblePush)
+    return () => {
+      window.removeEventListener('focus', refreshPush)
+      document.removeEventListener('visibilitychange', refreshVisiblePush)
     }
   }, [loaded, sets])
   const [profileOpen, setProfileOpen] = useState(false)

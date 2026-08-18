@@ -10,6 +10,7 @@ export function pushSupported() {
 }
 
 let swReg = null
+let subscribeInFlight = null
 const PUSH_SUBSCRIPTION_EVENT = 'chrona-push-subscription-change'
 
 function announcePushSubscriptionChange() {
@@ -18,9 +19,13 @@ function announcePushSubscriptionChange() {
 
 export async function registerSW() {
   if (!('serviceWorker' in navigator)) return null
-  if (swReg) return swReg
+  if (swReg) {
+    swReg.update().catch(() => {})
+    return swReg
+  }
   try {
-    swReg = await navigator.serviceWorker.register('/sw.js')
+    swReg = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
+    swReg.update().catch(() => {})
     return swReg
   } catch {
     return null
@@ -45,7 +50,7 @@ function keyOf(sub) {
 }
 
 // Subscribe this device for background push. Returns true on success.
-export async function subscribePush() {
+async function subscribePushOnce() {
   if (!pushSupported()) return false
   if (Notification.permission !== 'granted') {
     if ((await Notification.requestPermission()) !== 'granted') return false
@@ -76,6 +81,21 @@ export async function subscribePush() {
   })
   announcePushSubscriptionChange()
   return true
+}
+
+export async function subscribePush() {
+  if (!subscribeInFlight) {
+    subscribeInFlight = subscribePushOnce().finally(() => {
+      subscribeInFlight = null
+    })
+  }
+  return subscribeInFlight
+}
+
+export async function currentPushEndpoint() {
+  const registration = await registerSW()
+  const subscription = await registration?.pushManager.getSubscription()
+  return subscription?.endpoint || null
 }
 
 // Force a clean re-subscribe: drop any existing subscription (locally and on

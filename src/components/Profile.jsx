@@ -4,7 +4,12 @@ import Icon from './Icon.jsx'
 import { IconButton } from './PaperButton.jsx'
 import Avatar from './Avatar.jsx'
 import { api, useAuth } from '../auth.jsx'
-import { pushSupported, reregisterPush, subscribePush } from '../push.js'
+import {
+  currentPushEndpoint,
+  pushSupported,
+  reregisterPush,
+  subscribePush,
+} from '../push.js'
 import {
   AVATAR_COLORS,
   cropGeometry,
@@ -373,7 +378,11 @@ export default function Profile({ onClose, themePreference, onThemeChange }) {
         setTestMsg('Notifications were not allowed or are unavailable on this device.')
         return
       }
-      const response = await api('/api/push/test', { method: 'POST' })
+      const endpoint = await currentPushEndpoint()
+      const response = await api('/api/push/test', {
+        method: 'POST',
+        body: JSON.stringify({ endpoint }),
+      })
       setTestMsg(`Sent to ${response.sent} device(s). Check your notifications.`)
     } catch (sendError) {
       setTestMsg(sendError.message || 'Could not send test.')

@@ -69,8 +69,15 @@ router.post('/unsubscribe', requireAuth, async (req, res) => {
 router.post('/test', requireAuth, async (req, res) => {
   if (!configured) return res.status(400).json({ error: 'Push not configured on server.' })
   try {
+    const endpoint = req.body?.endpoint
     const subs = (
-      await query('SELECT endpoint, subscription FROM push_subscriptions WHERE user_id = $1', [req.userId])
+      await query(
+        `SELECT endpoint, subscription
+         FROM push_subscriptions
+         WHERE user_id = $1
+           AND ($2::text IS NULL OR endpoint = $2)`,
+        [req.userId, endpoint || null],
+      )
     ).rows
     if (!subs.length) return res.status(404).json({ error: 'No devices subscribed yet. Turn on a bell first.' })
     const payload = JSON.stringify({
@@ -78,15 +85,27 @@ router.post('/test', requireAuth, async (req, res) => {
       body: 'Test reminder — notifications are working! 🔥',
       tag: `test-${Date.now()}`,
     })
-    await Promise.all(
-      subs.map((s) =>
-        webpush.sendNotification(asObj(s.subscription), payload).catch(async (err) => {
-          if ([403, 404, 410].includes(err?.statusCode))
-            await query('DELETE FROM push_subscriptions WHERE endpoint = $1', [s.endpoint]).catch(() => {})
-        }),
-      ),
-    )
-    res.json({ ok: true, sent: subs.length })
+    const results = await Promise.all(subs.map(async (subscription) => {
+      try {
+        await webpush.sendNotification(asObj(subscription.subscription), payload, {
+          TTL: 300,
+          urgency: 'high',
+        })
+        return true
+      } catch (error) {
+        if ([403, 404, 410].includes(error?.statusCode)) {
+          await query('DELETE FROM push_subscriptions WHERE endpoint = $1', [subscription.endpoint]).catch(() => {})
+        } else {
+          console.error('test push delivery error', error)
+        }
+        return false
+      }
+    }))
+    const sent = results.filter(Boolean).length
+    if (!sent) return res.status(502).json({
+      error: 'No test notification could be delivered. Re-register notifications and try again.',
+    })
+    res.json({ ok: true, sent })
   } catch (err) {
     console.error('test push error', err)
     res.status(500).json({ error: `Could not send test: ${err?.statusCode || ''} ${err?.body || err?.message || ''}`.trim() })
@@ -94,12 +113,12 @@ router.post('/test', requireAuth, async (req, res) => {
 })
 
 // What time is it (HH:MM) in a given IANA timezone right now?
-function tzNow(tz) {
+function tzNow(tz, instant = new Date()) {
   try {
     const p = new Intl.DateTimeFormat('en-CA', {
       timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', hour12: false,
-    }).formatToParts(new Date())
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(instant)
     const g = (t) => p.find((x) => x.type === t)?.value
     return { y: +g('year'), m: +g('month'), d: +g('day'), hh: g('hour'), mm: g('minute') }
   } catch {
@@ -109,27 +128,89 @@ function tzNow(tz) {
 
 const notifyOn = (s) => s.notify !== false
 
+export function streakReminderPhase({ hh, mm }) {
+  if (hh === '09' && mm === '00') return 'morning'
+  if (hh === '00' && mm === '25') return 'deadline'
+  return null
+}
+
+export function streakReminderDate({ y, m, d }, phase) {
+  const date = new Date(y, m - 1, d, 12, 0, 0)
+  if (phase === 'deadline') date.setDate(date.getDate() - 1)
+  return date
+}
+
 function dueAndPending(set, localDate) {
   if (!notifyOn(set)) return false
+  if (!set.trackStreak) return false
   if (!isScheduled(set, localDate)) return false
   const k = dateKey(localDate)
   return !set.completions?.[k] && !set.freezes?.[k]
 }
 
-async function send(sub, set, when) {
+async function sendStreakNotification({
+  sub,
+  set,
+  when,
+  localDate,
+  queryFn = query,
+  sendNotification = (subscription, payload, options) =>
+    webpush.sendNotification(subscription, payload, options),
+}) {
   const body = when === 'morning'
     ? `Make sure to do your “${set.name}” today to keep your streak going!`
     : `Last chance! Do your “${set.name}” before 12:30 AM!`
   try {
-    await webpush.sendNotification(
+    await sendNotification(
       asObj(sub.subscription),
-      JSON.stringify({ title: 'Chrona', body, tag: `${set.id}-${dateKey(new Date())}-${when}` }),
+      JSON.stringify({
+        title: 'Chrona',
+        body,
+        tag: `${set.id}-${dateKey(localDate)}-${when}`,
+        icon: '/icon-192.png',
+      }),
+      { TTL: 3600, urgency: 'high' },
     )
+    return true
   } catch (err) {
     if ([403, 404, 410].includes(err?.statusCode)) {
-      await query('DELETE FROM push_subscriptions WHERE endpoint = $1', [sub.endpoint]).catch(() => {})
+      await queryFn('DELETE FROM push_subscriptions WHERE endpoint = $1', [sub.endpoint]).catch(() => {})
+    } else {
+      console.error('streak push delivery error', err)
+    }
+    return false
+  }
+}
+
+export async function dispatchStreakReminders({
+  subscriptions,
+  queryFn = query,
+  instant = new Date(),
+  sendNotification,
+}) {
+  let sent = 0
+  for (const sub of subscriptions) {
+    const now = tzNow(sub.tz, instant)
+    if (!now) continue
+    const when = streakReminderPhase(now)
+    if (!when) continue
+    const localDate = streakReminderDate(now, when)
+    const result = await queryFn('SELECT sets FROM user_sets WHERE user_id = $1', [sub.user_id])
+    const sets = Array.isArray(result.rows[0]?.sets) ? result.rows[0].sets : []
+    for (const set of sets) {
+      if (!dueAndPending(set, localDate)) continue
+      const delivered = await sendStreakNotification({
+        sub,
+        set,
+        when,
+        localDate,
+        queryFn,
+        sendNotification,
+      })
+      if (delivered) sent++
     }
   }
+  return sent
 }
 
 async function tick() {
@@ -175,16 +256,8 @@ async function tick() {
         sub.endpoint,
       ])
     }
-    const now = tzNow(sub.tz)
-    if (!now) continue
-    const when = now.hh === '17' && now.mm === '00' ? 'morning'
-      : now.hh === '22' && now.mm === '00' ? 'evening' : null
-    if (!when) continue
-    const localDate = new Date(now.y, now.m - 1, now.d, 12, 0, 0)
-    const r = await query('SELECT sets FROM user_sets WHERE user_id = $1', [sub.user_id])
-    const sets = Array.isArray(r.rows[0]?.sets) ? r.rows[0].sets : []
-    for (const set of sets) if (dueAndPending(set, localDate)) await send(sub, set, when)
   }
+  await dispatchStreakReminders({ subscriptions: subs })
 }
 
 export function startPushCron() {

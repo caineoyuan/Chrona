@@ -20,7 +20,7 @@ export async function ensurePermission() {
   }
 }
 
-function show(set, when) {
+async function show(set, when) {
   if (!notificationsSupported() || Notification.permission !== 'granted') return
   const title = 'Chrona'
   const body =
@@ -28,7 +28,14 @@ function show(set, when) {
       ? `Make sure to do your “${set.name}” today to keep your streak going!`
       : `Last chance! Do your “${set.name}” before 12:30 AM!`
   try {
-    new Notification(title, { body, tag: `${set.id}-${todayKey()}-${when}` })
+    const options = {
+      body,
+      tag: `${set.id}-${todayKey()}-${when}`,
+      icon: '/icon-192.png',
+    }
+    const registration = await navigator.serviceWorker?.getRegistration()
+    if (registration) await registration.showNotification(title, options)
+    else new Notification(title, options)
   } catch {
     /* ignore */
   }
@@ -44,29 +51,36 @@ function dueAndPending(set) {
   )
 }
 
-// Schedule today's two reminders (12:31 AM and 11:30 PM) and refresh after the grace period.
-// Reminders fire only while the app is open; a fresh 12:31 AM reminder fires if the
+export function reminderPlan(now = new Date()) {
+  const at = (h, m) => {
+    const time = new Date(now)
+    time.setHours(h, m, 0, 0)
+    return time
+  }
+  const morning = at(9, 0)
+  const deadline = at(0, 25)
+  if (deadline < now) deadline.setDate(deadline.getDate() + 1)
+  return [
+    { when: 'morning', at: morning },
+    { when: 'deadline', at: deadline },
+  ]
+}
+
+// Schedule reminders for 9:00 AM and five minutes before the 12:30 AM deadline.
+// Reminders fire only while the app is open; a fresh morning reminder fires if the
 // app is opened on a due day before completion. Returns a cleanup fn.
 export function scheduleReminders(sets) {
   const timers = []
   const now = new Date()
 
-  const at = (h, m) => {
-    const t = new Date(now)
-    t.setHours(h, m, 0, 0)
-    return t.getTime()
-  }
-  const plan = [
-    { when: 'morning', ms: at(0, 31) },
-    { when: 'evening', ms: at(23, 30) },
-  ]
-  for (const p of plan) {
-    const delay = p.ms - now.getTime()
+  for (const reminder of reminderPlan(now)) {
+    const delay = reminder.at.getTime() - now.getTime()
     const run = () =>
-      sets.filter(dueAndPending).forEach((s) => show(s, p.when))
+      sets.filter(dueAndPending).forEach((set) => void show(set, reminder.when))
     if (delay <= 0) {
       // Past time today: nudge once now (only morning, to avoid late spam).
-      if (p.when === 'morning' && delay > -23.5 * 3600000) run()
+      if (reminder.when === 'morning' && delay > -23.5 * 3600000) run()
+      else if (reminder.when === 'deadline' && delay > -60_000) run()
     } else {
       timers.push(setTimeout(run, delay))
     }
@@ -87,8 +101,6 @@ export function useReminders(sets) {
   const ref = useRef(sets)
   ref.current = sets
   useEffect(() => {
-    const wantsNotify = sets.some(notifyOn)
-    if (wantsNotify) ensurePermission()
     let cleanup = scheduleReminders(ref.current)
     const replan = () => {
       cleanup?.()

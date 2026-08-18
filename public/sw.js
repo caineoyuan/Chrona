@@ -13,11 +13,34 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(data.title || 'Chrona', {
       body: data.body,
       tag: data.tag,
-      icon: data.icon || '/timer-shutter.png',
-      badge: data.icon || '/timer-shutter.png',
+      icon: data.icon || '/icon-192.png',
+      badge: '/icon-192.png',
       data: { url: data.url || '/' },
     }),
   )
+})
+
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil((async () => {
+    const response = await fetch('/api/push/key', { credentials: 'include' })
+    if (!response.ok) throw new Error('Could not refresh push key.')
+    const { key } = await response.json()
+    const padding = '='.repeat((4 - key.length % 4) % 4)
+    const raw = atob((key + padding).replace(/-/g, '+').replace(/_/g, '/'))
+    const applicationServerKey = Uint8Array.from(raw, (character) => character.charCodeAt(0))
+    const subscription = event.newSubscription || await self.registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey,
+    })
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+    const result = await fetch('/api/push/subscribe', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription, tz }),
+    })
+    if (!result.ok) throw new Error('Could not refresh push subscription.')
+  })())
 })
 
 self.addEventListener('notificationclick', (event) => {
