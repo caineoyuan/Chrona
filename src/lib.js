@@ -84,6 +84,7 @@ export function streakCalendarMonths(
           day: index + 1,
           dateKey: key,
           completed: Boolean(set.completions?.[key]),
+          frozen: Boolean(set.freezes?.[key]),
           current: key === dateKey(current),
           editable: date >= created && date <= current,
         }

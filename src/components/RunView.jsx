@@ -248,13 +248,14 @@ function StreakCalendar({ set, readOnly, onCompletionChange }) {
                 <span className="streak-calendar-blank" key={`blank-${index}`} />
               ))}
               {month.days.map((day) => (
-                <span className={`streak-calendar-day${day.current ? ' current' : ''}${day.completed ? ' completed' : ''}`}
+                <span className={`streak-calendar-day${day.current ? ' current' : ''}${day.completed ? ' completed' : ''}${day.frozen ? ' frozen' : ''}`}
                   key={day.dateKey}>
                   <button type="button" disabled={!day.editable || readOnly}
                     aria-label={`${day.completed ? 'Edit' : 'Add'} completion for ${day.dateKey}`}
                     onClick={() => setSelectedDay(day)}>
                     <span>{day.day}</span>
                     {day.completed && <Icon name="fire-element" size={16} />}
+                    {day.frozen && <Icon name="snowflake" size={16} />}
                   </button>
                 </span>
               ))}

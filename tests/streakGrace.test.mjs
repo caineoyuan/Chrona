@@ -13,6 +13,7 @@ import {
 test('calendar completion edits update the canonical set completion map', () => {
   const set = dailySet()
   set.createdAt = '2026-08-01T12:00:00.000Z'
+  set.freezes['2026-08-04'] = true
   const added = setCompletionForDate(set, '2026-08-05', true)
   const month = streakCalendarMonths(
     added,
@@ -22,6 +23,7 @@ test('calendar completion edits update the canonical set completion map', () => 
 
   assert.equal(added.completions['2026-08-05'], true)
   assert.equal(month.days.find((day) => day.dateKey === '2026-08-05').completed, true)
+  assert.equal(month.days.find((day) => day.dateKey === '2026-08-04').frozen, true)
   assert.equal(month.days.find((day) => day.dateKey === '2026-08-07').editable, false)
   assert.equal(setCompletionForDate(added, '2026-08-05', false).completions['2026-08-05'], undefined)
 })
