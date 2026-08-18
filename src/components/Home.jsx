@@ -149,6 +149,8 @@ function SetCard({
   const participatingFriend = buddyStreak
     ? hasParticipatingFriend(buddyStreak, user.id)
     : false
+  const sharedPeople = buddyStreak?.members.filter((member) =>
+    !member.removedAt && member.userId !== String(user.id)) || []
   const totalCompletions = Object.values(set.completions || {})
     .filter(Boolean).length
 
@@ -267,12 +269,11 @@ function SetCard({
             </button>
           </div>)}
         </div>}
-        <div className="card-head">
+        <div className={`card-head${weekly ? ' weekly-card-head' : ''}${sharedPeople.length ? ' has-shared-people' : ''}`}>
           <div>
             <h2 className="card-title">{set.name || 'Untitled'}</h2>
             {buddyStreak && <div className="streak-people" aria-label="People sharing this streak">
-              {buddyStreak.members.filter((member) =>
-                !member.removedAt && member.userId !== String(user.id)).map((member) => {
+              {sharedPeople.map((member) => {
                   const participant = member.role === 'participant'
                   const completed = buddyStreak.currentOccurrence
                     ?.completedParticipantIds?.includes(member.userId)
@@ -291,6 +292,10 @@ function SetCard({
                 })}
             </div>}
           </div>
+          {weekly && <div className="card-ring-counters">
+            {participatingFriend && <BuddyRing streak={buddyStreak} />}
+            <WeeklyRing set={set} />
+          </div>}
         </div>
 
         {(set.trackStreak || buddyStreak) && (
@@ -305,13 +310,7 @@ function SetCard({
               <span className="streak-label">{weekly ? 'week streak' : 'day streak'}</span>
             </div>}
             {weekly
-              ? <div className="weekly-streak-history">
-                  <div className="card-ring-counters">
-                    {participatingFriend && <BuddyRing streak={buddyStreak} />}
-                    <WeeklyRing set={set} />
-                  </div>
-                  <FireStrip set={set} compact />
-                </div>
+              ? <FireStrip set={set} compact />
               : participatingFriend
                 ? <div className="card-ring-counters">
                   {participatingFriend && <BuddyRing streak={buddyStreak} />}
