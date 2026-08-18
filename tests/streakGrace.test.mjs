@@ -4,9 +4,27 @@ import {
   computeStreak,
   dateKey,
   streakDate,
+  setCompletionForDate,
+  streakCalendarMonths,
   todayKey,
   toggleSetCompleteToday,
 } from '../src/lib.js'
+
+test('calendar completion edits update the canonical set completion map', () => {
+  const set = dailySet()
+  set.createdAt = '2026-08-01T12:00:00.000Z'
+  const added = setCompletionForDate(set, '2026-08-05', true)
+  const month = streakCalendarMonths(
+    added,
+    new Date(2026, 7, 6, 12),
+    { pastMonths: 0, futureMonths: 0 },
+  )[0]
+
+  assert.equal(added.completions['2026-08-05'], true)
+  assert.equal(month.days.find((day) => day.dateKey === '2026-08-05').completed, true)
+  assert.equal(month.days.find((day) => day.dateKey === '2026-08-07').editable, false)
+  assert.equal(setCompletionForDate(added, '2026-08-05', false).completions['2026-08-05'], undefined)
+})
 
 function dailySet(completions = {}) {
   return {

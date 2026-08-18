@@ -32,6 +32,68 @@ export function streakDate(d = new Date()) {
 
 export const todayKey = (d = new Date()) => dateKey(streakDate(d))
 
+export function setCompletionForDate(set, completionDate, completed = true) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(completionDate)) return set
+  const parsed = parseKey(completionDate)
+  if (dateKey(parsed) !== completionDate) return set
+  const completions = { ...set.completions }
+  const freezes = { ...set.freezes }
+  if (completed) {
+    completions[completionDate] = true
+    delete freezes[completionDate]
+  } else {
+    delete completions[completionDate]
+  }
+  return { ...set, completions, freezes }
+}
+
+export function completionMapForUser(completions, userId) {
+  return Object.fromEntries((completions || [])
+    .filter((completion) => String(completion.userId) === String(userId))
+    .map((completion) => {
+      const completedDate = String(
+        completion.localCompletedAt || completion.periodKey?.slice(4) || '',
+      ).slice(0, 10)
+      return [completedDate, true]
+    })
+    .filter(([completedDate]) => /^\d{4}-\d{2}-\d{2}$/.test(completedDate)))
+}
+
+export function streakCalendarMonths(
+  set,
+  now = new Date(),
+  { pastMonths = 6, futureMonths = 6 } = {},
+) {
+  const current = startOfDay(now)
+  const created = startOfDay(new Date(set.createdAt || now))
+  const cursor = new Date(current.getFullYear(), current.getMonth() - pastMonths, 1)
+  const last = new Date(current.getFullYear(), current.getMonth() + futureMonths, 1)
+  const months = []
+  while (cursor <= last) {
+    const year = cursor.getFullYear()
+    const month = cursor.getMonth()
+    const days = new Date(year, month + 1, 0).getDate()
+    months.push({
+      key: `${year}-${month}`,
+      label: cursor.toLocaleDateString([], { month: 'long', year: 'numeric' }),
+      leadingDays: new Date(year, month, 1).getDay(),
+      days: Array.from({ length: days }, (_, index) => {
+        const date = new Date(year, month, index + 1)
+        const key = dateKey(date)
+        return {
+          day: index + 1,
+          dateKey: key,
+          completed: Boolean(set.completions?.[key]),
+          current: key === dateKey(current),
+          editable: date >= created && date <= current,
+        }
+      }),
+    })
+    cursor.setMonth(cursor.getMonth() + 1)
+  }
+  return months
+}
+
 const WEEK = 7 * DAY
 
 function parseKey(key) {

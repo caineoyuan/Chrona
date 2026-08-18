@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   buddyPeriodKey,
+  buddyPeriodKeyForDate,
   computeGroupStreak,
   localStreakDate,
   membershipDates,
@@ -37,6 +38,15 @@ test('weekly period keys start Sunday and honor grace in an IANA timezone', () =
     ),
     'week:2026-08-02',
   )
+})
+
+test('retroactive completion dates map to canonical daily and weekly periods', () => {
+  assert.equal(buddyPeriodKeyForDate({}, '2026-08-18'), 'day:2026-08-18')
+  assert.equal(
+    buddyPeriodKeyForDate({ schedule: { mode: 'weekly' } }, '2026-08-18'),
+    'week:2026-08-16',
+  )
+  assert.equal(buddyPeriodKeyForDate({}, '2026-02-30'), null)
 })
 
 test('the same instant resolves independently across far-apart member timezones', () => {

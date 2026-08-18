@@ -3,7 +3,9 @@ import { requireAuth } from './auth.js'
 import { pool } from './db.js'
 import {
   buddyPeriodKey,
+  buddyPeriodKeyForDate,
   computeGroupStreak,
+  localCalendarDate,
   membershipDates,
   normalizeIanaTimezone,
   occurrenceCompletion,
@@ -559,10 +561,90 @@ export function createBuddyStreaksRouter(poolFn = pool) {
         completedUserId: String(req.userId),
         completed: false,
       })
+
       return res.json({ completed: false, periodKey })
     } catch (error) {
       console.error('undo buddy streak error', error)
       return res.status(500).json({ error: 'Could not undo buddy streak completion.' })
+    }
+  })
+
+  router.put('/:id/completions/:dateKey', requireAuth, async (req, res) => {
+    const id = parseResourceId(req.params.id)
+    if (!id) return res.status(404).json({ error: 'Buddy streak not found.' })
+    try {
+      const membership = await activeMembership(poolFn, id, req.userId)
+      if (!membership) return res.status(404).json({ error: 'Buddy streak not found.' })
+      if (membership.role !== 'participant') {
+        return res.status(403).json({ error: 'Participant access required.' })
+      }
+      const timezone = normalizeIanaTimezone(membership.timezone)
+      const periodKey = buddyPeriodKeyForDate(membership.definition, req.params.dateKey)
+      const currentDate = timezone ? localCalendarDate(new Date(), timezone) : null
+      const createdDate = timezone
+        ? localCalendarDate(membership.definition.createdAt, timezone)
+        : null
+      if (!timezone || !periodKey || req.params.dateKey > currentDate ||
+          (createdDate && req.params.dateKey < createdDate)) {
+        return res.status(400).json({ error: 'Completion date is invalid.' })
+      }
+      await poolFn.query(
+        `INSERT INTO buddy_streak_completions (
+           buddy_streak_id, user_id, period_key, local_completed_at, source
+         ) VALUES ($1, $2, $3, $4, 'manual')
+         ON CONFLICT (buddy_streak_id, user_id, period_key) DO UPDATE
+         SET local_completed_at = EXCLUDED.local_completed_at,
+             completed_at = now(),
+             source = EXCLUDED.source`,
+        [id, req.userId, periodKey, `${req.params.dateKey} 12:00:00`],
+      )
+      await publishBuddyChange(poolFn, id, req.userId, {
+        change: 'completion',
+        resourceId: id,
+        completedUserId: String(req.userId),
+        completed: true,
+      })
+      return res.json({ completed: true, periodKey, dateKey: req.params.dateKey })
+    } catch (error) {
+      console.error('add buddy streak completion date error', error)
+      return res.status(500).json({ error: 'Could not add streak completion.' })
+    }
+  })
+
+  router.delete('/:id/completions/:dateKey', requireAuth, async (req, res) => {
+    const id = parseResourceId(req.params.id)
+    if (!id) return res.status(404).json({ error: 'Buddy streak not found.' })
+    try {
+      const membership = await activeMembership(poolFn, id, req.userId)
+      if (!membership) return res.status(404).json({ error: 'Buddy streak not found.' })
+      if (membership.role !== 'participant') {
+        return res.status(403).json({ error: 'Participant access required.' })
+      }
+      const timezone = normalizeIanaTimezone(membership.timezone)
+      const periodKey = buddyPeriodKeyForDate(membership.definition, req.params.dateKey)
+      const currentDate = timezone ? localCalendarDate(new Date(), timezone) : null
+      const createdDate = timezone
+        ? localCalendarDate(membership.definition.createdAt, timezone)
+        : null
+      if (!timezone || !periodKey || req.params.dateKey > currentDate ||
+          (createdDate && req.params.dateKey < createdDate)) {
+        return res.status(400).json({ error: 'Completion date is invalid.' })
+      }
+      await poolFn.query(
+        `DELETE FROM buddy_streak_completions
+         WHERE buddy_streak_id = $1 AND user_id = $2 AND period_key = $3`,
+        [id, req.userId, periodKey],
+      )
+      await publishBuddyChange(poolFn, id, req.userId, {
+        change: 'completion',
+        resourceId: id,
+        completedUserId: String(req.userId),
+        completed: false,
+      })
+      return res.json({ completed: false, periodKey, dateKey: req.params.dateKey })
+    } catch (error) {
+      console.error('remove buddy streak completion date error', error)
+      return res.status(500).json({ error: 'Could not remove streak completion.' })
     }
   })
 

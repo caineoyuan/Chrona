@@ -40,5 +40,9 @@ export function buddyStreakClient(request) {
     }),
     complete: (id) => call(`/${id}/completion`, { method: 'PUT' }),
     undoCompletion: (id) => call(`/${id}/completion`, { method: 'DELETE' }),
+    setCompletionDate: (id, dateKey, completed) => call(
+      `/${id}/completions/${encodeURIComponent(dateKey)}`,
+      { method: completed ? 'PUT' : 'DELETE' },
+    ),
   }
 }

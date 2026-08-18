@@ -450,6 +450,14 @@ function Workspace({ theme }) {
                 ).catch(() => {})
               } else upsertSet(next)
             }}
+            onCompletionDateChange={currentBuddy
+              ? (completionDate, completed) => buddy.setCompletionDate(
+                  currentBuddy.id,
+                  user.id,
+                  completionDate,
+                  completed,
+                ).catch(() => {})
+              : undefined}
             onEdit={() => go({
               name: 'edit',
               id: current.id,

@@ -367,6 +367,7 @@ test('completion and undo derive the same current key from member timezone', asy
     }
     return { rows: [] }
   })
+
   const completed = await request(pool, '/12/completion', { method: 'PUT' })
   const completedBody = await completed.json()
   const undone = await request(pool, '/12/completion', { method: 'DELETE' })
@@ -382,6 +383,38 @@ test('completion and undo derive the same current key from member timezone', asy
     text.includes('INSERT INTO collaboration_events')))
   assert.ok(pool.calls.some(({ text }) =>
     text.includes('DELETE FROM buddy_streak_completions')))
+})
+
+test('participants can add and remove a dated completion from shared history', async () => {
+  const pool = fakePool(async (text) => {
+    if (text.includes('FROM buddy_streak_members member')) {
+      return {
+        rows: [{
+          role: 'participant',
+          timezone: 'UTC',
+          definition: {
+            name: 'Daily',
+            createdAt: '2026-08-01T12:00:00.000Z',
+          },
+          version: 1,
+        }],
+      }
+    }
+    return { rows: [] }
+  })
+
+  const added = await request(pool, '/12/completions/2026-08-03', { method: 'PUT' })
+  const removed = await request(pool, '/12/completions/2026-08-03', { method: 'DELETE' })
+
+  assert.equal(added.status, 200)
+  assert.equal(removed.status, 200)
+  assert.ok(pool.calls.some(({ text, params }) =>
+    text.includes('INSERT INTO buddy_streak_completions') &&
+    params[2] === 'day:2026-08-03' &&
+    params[3] === '2026-08-03 12:00:00'))
+  assert.ok(pool.calls.some(({ text, params }) =>
+    text.includes('DELETE FROM buddy_streak_completions') &&
+    params[2] === 'day:2026-08-03'))
 })
 
 test('participants can remove a member and create a private removal activity', async () => {

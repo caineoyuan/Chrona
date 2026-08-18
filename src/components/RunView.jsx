@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import Icon from './Icon.jsx'
 import Avatar from './Avatar.jsx'
 import { IconButton } from './PaperButton.jsx'
@@ -14,6 +14,8 @@ import {
   lastScheduledDates,
   normalizeSchedule,
   parseNotes,
+  setCompletionForDate,
+  streakCalendarMonths,
 } from '../lib.js'
 import { ensurePermission } from '../notify.js'
 import { subscribePush } from '../push.js'
@@ -186,6 +188,110 @@ function StepNotes({ notes, active, paused, done }) {
   )
 }
 
+function StreakCalendar({ set, readOnly, onCompletionChange }) {
+  const now = new Date()
+  const [pastMonths, setPastMonths] = useState(6)
+  const [futureMonths, setFutureMonths] = useState(6)
+  const [selectedDay, setSelectedDay] = useState(null)
+  const scrollRef = useRef(null)
+  const loadRef = useRef(null)
+  const currentMonthKey = `${now.getFullYear()}-${now.getMonth()}`
+  const months = streakCalendarMonths(set, now, { pastMonths, futureMonths })
+
+  useEffect(() => {
+    const container = scrollRef.current
+    const current = container?.querySelector(`[data-month="${currentMonthKey}"]`)
+    if (container && current) {
+      container.scrollLeft = current.offsetLeft - container.offsetLeft
+    }
+  }, [currentMonthKey, set.id])
+
+  useLayoutEffect(() => {
+    const container = scrollRef.current
+    if (!container || !loadRef.current) return
+    if (loadRef.current.side === 'past') {
+      container.scrollLeft += container.scrollWidth - loadRef.current.width
+    }
+    loadRef.current = null
+  }, [futureMonths, pastMonths])
+
+  const loadAtEdge = (event) => {
+    const container = event.currentTarget
+    if (loadRef.current) return
+    if (container.scrollLeft <= 16) {
+      loadRef.current = { side: 'past', width: container.scrollWidth }
+      setPastMonths((count) => count + 6)
+    } else if (container.scrollWidth - container.clientWidth - container.scrollLeft <= 16) {
+      loadRef.current = { side: 'future', width: container.scrollWidth }
+      setFutureMonths((count) => count + 6)
+    }
+  }
+
+  const saveDay = () => {
+    if (!selectedDay) return
+    onCompletionChange(selectedDay.dateKey, !selectedDay.completed)
+    setSelectedDay(null)
+  }
+
+  return (
+    <div className="streak-calendar-page">
+      <h1 className="run-title">{set.name || 'Untitled'} calendar</h1>
+      <div className="streak-calendar-scroll" ref={scrollRef} onScroll={loadAtEdge}>
+        {months.map((month) => (
+          <section className="streak-calendar-month" data-month={month.key} key={month.key}>
+            <h2>{month.label}</h2>
+            <div className="streak-calendar-grid">
+              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+                <span className="streak-calendar-weekday" key={`${day}-${index}`}>{day}</span>
+              ))}
+              {Array.from({ length: month.leadingDays }, (_, index) => (
+                <span className="streak-calendar-blank" key={`blank-${index}`} />
+              ))}
+              {month.days.map((day) => (
+                <span className={`streak-calendar-day${day.current ? ' current' : ''}${day.completed ? ' completed' : ''}`}
+                  key={day.dateKey}>
+                  <button type="button" disabled={!day.editable || readOnly}
+                    aria-label={`${day.completed ? 'Edit' : 'Add'} completion for ${day.dateKey}`}
+                    onClick={() => setSelectedDay(day)}>
+                    <span>{day.day}</span>
+                    {day.completed && <Icon name="fire-element" size={16} />}
+                  </button>
+                </span>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+      {selectedDay && (
+        <div className="modal-overlay" onClick={() => setSelectedDay(null)}>
+          <section className="modal streak-date-modal" role="dialog" aria-modal="true"
+            aria-labelledby="streak-date-title" onClick={(event) => event.stopPropagation()}>
+            <h3 className="modal-title" id="streak-date-title">
+              {new Date(`${selectedDay.dateKey}T12:00:00`).toLocaleDateString([], {
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric',
+              })}
+            </h3>
+            <p className="modal-body">
+              {selectedDay.completed
+                ? 'This day is recorded as complete.'
+                : 'Add a streak completion for this day?'}
+            </p>
+            <div className="modal-actions">
+              <button className="ghost-btn" onClick={() => setSelectedDay(null)}>Cancel</button>
+              <button className={selectedDay.completed ? 'danger-btn' : 'primary-btn'}
+                onClick={saveDay}>
+                {selectedDay.completed ? 'Remove completion' : 'Add completion'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function RunView({
   set,
   buddyStreak,
@@ -196,19 +302,27 @@ export default function RunView({
   onNudge,
   onDelete,
   onBack,
+  onCompletionDateChange,
 }) {
   const steps = set.steps
   const readOnly = buddyStreak?.requestingRole === 'observer'
   const hasTimers = steps.some((s) => !s.noTime)
   const swipe = useRef(null)
   const [dragX, setDragX] = useState(0)
+  const [page, setPage] = useState('set')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const onNavStart = (e) => {
     const t = e.touches[0]
-    swipe.current = { x: t.clientX, y: t.clientY, ok: false }
+    swipe.current = {
+      x: t.clientX,
+      y: t.clientY,
+      ok: false,
+      calendarScroll: Boolean(e.target.closest('.streak-calendar-scroll')),
+    }
   }
   const onNavMove = (e) => {
     if (!swipe.current) return
+    if (swipe.current.calendarScroll) return
     const dx = e.touches[0].clientX - swipe.current.x
     const dy = e.touches[0].clientY - swipe.current.y
     if (!swipe.current.ok) {
@@ -216,15 +330,22 @@ export default function RunView({
       swipe.current.ok = Math.abs(dx) > Math.abs(dy) * 1.4
       if (!swipe.current.ok) { swipe.current = null; return }
     }
+    e.preventDefault()
     setDragX(dx)
   }
   const onNavEnd = () => {
     if (!swipe.current) { setDragX(0); return }
+    if (swipe.current.calendarScroll) {
+      swipe.current = null
+      setDragX(0)
+      return
+    }
     swipe.current = null
     const t = window.innerWidth * 0.4
-    if (dragX > t) onBack()
-    else if (dragX < -t) onEdit()
-    else setDragX(0)
+    if (page === 'calendar' && dragX > t) setPage('set')
+    else if (page === 'set' && dragX < -t) setPage('calendar')
+    else if (page === 'set' && dragX > t) onBack()
+    setDragX(0)
   }
   // Current cycle = most recent scheduled occurrence; stays "done" until the
   // next due date arrives or the user unchecks complete.
@@ -630,6 +751,16 @@ export default function RunView({
     return 'pending'
   }
 
+  const changeCompletionDate = (completionDate, completed) => {
+    if (readOnly) return
+    const next = setCompletionForDate(set, completionDate, completed)
+    if (onCompletionDateChange) {
+      onCompletionDateChange(completionDate, completed)
+    } else {
+      onUpdate(next)
+    }
+  }
+
   return (
     <div
       className={`run${set.kind === 'task' ? ' task' : ''}`}
@@ -638,6 +769,7 @@ export default function RunView({
       onTouchMove={onNavMove}
       onTouchEnd={onNavEnd}
     >
+      {page === 'set' ? <>
       <div className="run-fixed">
         <div className="run-head">
           <IconButton label="Back" name="arrow-left" iconSize={22}
@@ -842,6 +974,18 @@ export default function RunView({
           </div>
         </div>
       </div>}
+      </> : (
+        <StreakCalendar set={set} readOnly={readOnly}
+          onCompletionChange={changeCompletionDate} />
+      )}
+      <div className="run-page-dots" aria-label={`${page === 'set' ? 'Set' : 'Calendar'} page`}>
+        <button type="button" className={page === 'set' ? 'active' : ''}
+          aria-label="Show set" aria-current={page === 'set' ? 'page' : undefined}
+          onClick={() => setPage('set')} />
+        <button type="button" className={page === 'calendar' ? 'active' : ''}
+          aria-label="Show calendar" aria-current={page === 'calendar' ? 'page' : undefined}
+          onClick={() => setPage('calendar')} />
+      </div>
     </div>
   )
 }

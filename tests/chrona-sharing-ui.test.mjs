@@ -4,6 +4,7 @@ import test from 'node:test'
 import { activityClient } from '../src/activity-client.js'
 import { buddyStreakClient } from '../src/buddy-streak-client.js'
 import { invitationClient } from '../src/invitations.js'
+import { completionMapForUser } from '../src/lib.js'
 
 test('buddy client uses versioned member removal and manual ping endpoints', async () => {
   const calls = []
@@ -28,6 +29,36 @@ test('buddy client uses versioned member removal and manual ping endpoints', asy
   assert.deepEqual(JSON.parse(calls[2].options.body), {
     recipientUserId: '8',
   })
+})
+
+test('buddy client writes retroactive completion dates through one dated resource', async () => {
+  const calls = []
+  const client = buddyStreakClient(async (path, options) => {
+    calls.push({ path, options })
+    return { ok: true }
+  })
+
+  await client.setCompletionDate('12', '2026-08-16', true)
+  await client.setCompletionDate('12', '2026-08-16', false)
+
+  assert.deepEqual(calls.map(({ path, options }) => [path, options.method]), [
+    ['/api/buddy-streaks/12/completions/2026-08-16', 'PUT'],
+    ['/api/buddy-streaks/12/completions/2026-08-16', 'DELETE'],
+  ])
+})
+
+test('shared streak calendar reads every personal completion from the shared source', () => {
+  const completions = completionMapForUser([{
+    userId: '7',
+    periodKey: 'day:2026-08-16',
+    localCompletedAt: '2026-08-16T18:30:00.000Z',
+  }, {
+    userId: '8',
+    periodKey: 'day:2026-08-17',
+    localCompletedAt: '2026-08-17T18:30:00.000Z',
+  }], '7')
+
+  assert.deepEqual(completions, { '2026-08-16': true })
 })
 
 test('Chrona integrates buddy and spectator sharing across home and run views', async () => {
@@ -63,9 +94,16 @@ test('Chrona integrates buddy and spectator sharing across home and run views', 
   assert.match(css, /\.level-2 \.streak-nudge-dismiss \{[^}]*color: #ffe0bd;/)
   assert.match(css, /\.level-3 \.streak-nudge-dismiss \{[^}]*color: #ffd4d4;/)
   assert.match(css, /\.card-ring-counters \{[^}]*display: flex;[^}]*gap: 8px;/)
+  assert.match(css, /\.run-page-dots button \{[^}]*width: 40px;[^}]*height: 40px;/)
   assert.match(home, /’s streaks/)
   assert.match(home, /Number\(a\.buddyStreak\.currentOccurrence\?\.complete\) -/)
   assert.match(run, /className="run-shared-people"/)
+  assert.match(run, /\{set\.name \|\| 'Untitled'\} calendar/)
+  assert.match(run, /className="run-page-dots"/)
+  assert.match(run, /setPage\('calendar'\)/)
+  assert.match(run, /setPage\('set'\)/)
+  assert.match(run, /<Icon name="fire-element" size=\{16\} \/>/)
+  assert.match(run, /setCompletionForDate\(set, completionDate, completed\)/)
   assert.match(run, /run-person-state \$\{completed \? 'done' : 'waiting'\}/)
   assert.match(run, /title=\{`Nudge @\$\{member\.username\}`\}/)
   assert.match(run, /\(!buddyStreak \|\| buddyStreak\.canAdminister\) &&[\s\S]*<IconButton label="Share and manage people"/)

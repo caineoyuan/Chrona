@@ -68,6 +68,13 @@ export function buddyPeriodKey(
   return `week:${addDays(localDate, -date.getUTCDay())}`
 }
 
+export function buddyPeriodKeyForDate(definition, localDate) {
+  const date = dateFromKey(localDate)
+  if (!date || dateKey(date) !== localDate) return null
+  if (buddyPeriodKind(definition) === 'day') return `day:${localDate}`
+  return `week:${addDays(localDate, -date.getUTCDay())}`
+}
+
 export function periodBounds(periodKey) {
   const match = /^(day|week):(\d{4}-\d{2}-\d{2})$/.exec(periodKey)
   if (!match || !dateFromKey(match[2])) return null
@@ -78,7 +85,7 @@ export function periodBounds(periodKey) {
   }
 }
 
-function localCalendarDate(instant, timezone) {
+export function localCalendarDate(instant, timezone) {
   if (!instant) return null
   const parts = zonedParts(instant, timezone)
   return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`

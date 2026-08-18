@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, isLocalPreview } from './auth.jsx'
 import { buddyStreakClient } from './buddy-streak-client.js'
-import { todayKey } from './lib.js'
+import { completionMapForUser, todayKey } from './lib.js'
+
+function completionPeriod(definition, dateKey) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return null
+  if (definition?.schedule?.mode !== 'weekly') return `day:${dateKey}`
+  const date = new Date(`${dateKey}T12:00:00Z`)
+  date.setUTCDate(date.getUTCDate() - date.getUTCDay())
+  return `week:${date.toISOString().slice(0, 10)}`
+}
 
 export function buddySetForUser(streak, userId, fallback = {}) {
   const definition = streak.definition || {}
@@ -10,7 +18,7 @@ export function buddySetForUser(streak, userId, fallback = {}) {
     ? completed.has(String(userId))
     : streak.optimisticCompleted
   const key = todayKey()
-  const completions = { ...fallback.completions }
+  const completions = completionMapForUser(streak.completions, userId)
   if (selfCompleted) completions[key] = true
   else delete completions[key]
   return {
@@ -130,6 +138,33 @@ export function useBuddyStreaks() {
     },
   ), [optimistic])
 
+  const setCompletionDate = useCallback((id, userId, dateKey, completed) => optimistic(
+    id,
+    (items) => items.map((item) => {
+      if (item.id !== id) return item
+      const targetPeriod = completionPeriod(item.definition, dateKey)
+      const history = (item.completions || []).filter((entry) =>
+        String(entry.userId) !== String(userId) ||
+        completionPeriod(
+          item.definition,
+          String(entry.localCompletedAt || entry.periodKey?.slice(4) || '').slice(0, 10),
+        ) !== targetPeriod)
+      return {
+        ...item,
+        completions: completed ? [...history, {
+          userId: String(userId),
+          localCompletedAt: `${dateKey}T12:00:00.000Z`,
+          periodKey: targetPeriod,
+          source: 'manual',
+        }] : history,
+      }
+    }),
+    async () => {
+      await client.current.setCompletionDate(id, dateKey, completed)
+      return client.current.get(id)
+    },
+  ), [optimistic])
+
   const removeMember = useCallback((id, userId) => optimistic(
     id,
     (items) => items.map((item) => item.id === id ? {
@@ -193,5 +228,6 @@ export function useBuddyStreaks() {
     updateMember,
     ping,
     setCompletion,
+    setCompletionDate,
   }
 }
