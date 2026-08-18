@@ -118,6 +118,13 @@ function BuddyRing({ streak }) {
   )
 }
 
+function hasParticipatingFriend(streak, userId) {
+  const participantIds = streak.currentOccurrence?.participantIds || streak.members
+    .filter((member) => !member.removedAt && member.role === 'participant')
+    .map((member) => member.userId)
+  return participantIds.some((id) => String(id) !== String(userId))
+}
+
 function SetCard({
   set,
   buddyStreak,
@@ -296,7 +303,8 @@ function SetCard({
             </div>}
             {buddyStreak || weekly
               ? <div className="card-ring-counters">
-                  {buddyStreak && <BuddyRing streak={buddyStreak} />}
+                  {buddyStreak && hasParticipatingFriend(buddyStreak, user.id) &&
+                    <BuddyRing streak={buddyStreak} />}
                   {weekly && <WeeklyRing set={set} />}
                 </div>
               : <FireStrip set={set} />}
