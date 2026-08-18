@@ -307,14 +307,12 @@ function SetCard({
           <div className={`card-streak${weekly ? ' weekly-streak' : ''}`}>
             {weekly
               ? <>
-                <div className="weekly-streak-progress">
-                  {streakCounter}
-                  <FireStrip set={set} compact />
+                {streakCounter}
+                <FireStrip set={set} compact />
+                <div className="card-ring-counters">
+                  {participatingFriend && <BuddyRing streak={buddyStreak} />}
+                  <WeeklyRing set={set} />
                 </div>
-                  <div className="card-ring-counters">
-                    {participatingFriend && <BuddyRing streak={buddyStreak} />}
-                    <WeeklyRing set={set} />
-                  </div>
                 </>
               : participatingFriend
                 ? <>{streakCounter}<div className="card-ring-counters">

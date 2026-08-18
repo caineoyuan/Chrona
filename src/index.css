@@ -1295,12 +1295,7 @@ html[data-theme='light'] .workspace-chrona .card-actions .action-glyph [data-par
 .card-streak.weekly-streak {
   margin-top: 14px;
 }
-.weekly-streak-progress {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.weekly-streak > .card-ring-counters {
+.weekly-streak > .fire-strip {
   margin-left: auto;
 }
 .fire-strip.compact {
@@ -2312,7 +2307,7 @@ html[data-theme='light'] .workspace-chrona .notify-btn.active .gi path {
   bottom: 1px;
 }
 .streak-calendar-day.current .streak-calendar-marker::after {
-  bottom: -3px;
+  bottom: -6px;
 }
 .streak-calendar-marker {
   position: relative;
