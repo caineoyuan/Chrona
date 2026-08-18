@@ -2293,18 +2293,21 @@ html[data-theme='light'] .workspace-chrona .notify-btn.active .gi path {
   font-weight: 700;
 }
 .streak-calendar-day-number {
+  position: relative;
   display: grid;
   min-width: 28px;
   height: 28px;
   place-items: center;
 }
-.streak-calendar-day.current .streak-calendar-day-number {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  border: 1px solid var(--muted);
+.streak-calendar-day.current .streak-calendar-day-number::after {
+  position: absolute;
+  bottom: 1px;
+  width: 4px;
+  height: 4px;
+  background: #e4e4df;
   border-radius: 50%;
+  box-shadow: 0 0 3px rgba(255, 255, 255, .7);
+  content: '';
 }
 .streak-calendar-marker {
   position: relative;
@@ -2317,7 +2320,10 @@ html[data-theme='light'] .workspace-chrona .notify-btn.active .gi path {
   position: absolute;
   color: #fff;
   font-weight: 700;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, .8);
+  text-shadow:
+    0 2px 1px rgba(0, 0, 0, .95),
+    0 -1px 0 rgba(255, 255, 255, .2),
+    0 0 4px rgba(0, 0, 0, .9);
 }
 .streak-calendar-day.completed .streak-calendar-marker .streak-calendar-day-number {
   transform: translateY(4px);
