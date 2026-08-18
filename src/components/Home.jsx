@@ -304,13 +304,19 @@ function SetCard({
               <span className="streak-num">{streak}</span>
               <span className="streak-label">{weekly ? 'week streak' : 'day streak'}</span>
             </div>}
-            {participatingFriend || weekly
-              ? <div className="card-ring-counters">
-                  {participatingFriend && <BuddyRing streak={buddyStreak} />}
-                  {weekly && <WeeklyRing set={set} />}
+            {weekly
+              ? <div className="weekly-streak-history">
+                  <div className="card-ring-counters">
+                    {participatingFriend && <BuddyRing streak={buddyStreak} />}
+                    <WeeklyRing set={set} />
+                  </div>
+                  <FireStrip set={set} compact />
                 </div>
-              : null}
-            {(weekly || !participatingFriend) && <FireStrip set={set} compact={weekly} />}
+              : participatingFriend
+                ? <div className="card-ring-counters">
+                  {participatingFriend && <BuddyRing streak={buddyStreak} />}
+                </div>
+                : <FireStrip set={set} />}
           </div>
         )}
         {!set.trackStreak && !buddyStreak && (

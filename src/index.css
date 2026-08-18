@@ -1292,10 +1292,11 @@ html[data-theme='light'] .workspace-chrona .card-actions .action-glyph [data-par
   display: flex;
   gap: 4px;
 }
-.weekly-streak .streak-count {
-  flex-basis: 100%;
-}
-.weekly-streak .fire-strip {
+.weekly-streak-history {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 6px;
   margin-left: auto;
 }
 .fire-strip.compact {
