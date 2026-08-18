@@ -146,6 +146,9 @@ function SetCard({
   const frozenToday = Boolean(set.freezes?.[todayK])
   const flameLit = !(dueToday && !doneToday && !frozenToday)
   const weekly = normalizeSchedule(set).mode === 'weekly'
+  const participatingFriend = buddyStreak
+    ? hasParticipatingFriend(buddyStreak, user.id)
+    : false
   const totalCompletions = Object.values(set.completions || {})
     .filter(Boolean).length
 
@@ -301,10 +304,9 @@ function SetCard({
               <span className="streak-num">{streak}</span>
               <span className="streak-label">{weekly ? 'week streak' : 'day streak'}</span>
             </div>}
-            {buddyStreak || weekly
+            {participatingFriend || weekly
               ? <div className="card-ring-counters">
-                  {buddyStreak && hasParticipatingFriend(buddyStreak, user.id) &&
-                    <BuddyRing streak={buddyStreak} />}
+                  {participatingFriend && <BuddyRing streak={buddyStreak} />}
                   {weekly && <WeeklyRing set={set} />}
                 </div>
               : <FireStrip set={set} />}

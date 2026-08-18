@@ -505,18 +505,16 @@ function Workspace({ theme }) {
         busy={nudgeBusy} error={nudgeError} onConfirm={sendNudge}
         onClose={() => setNudgeTarget(null)} />}
 
-      <footer className="app-footer">
+      {appMode === 'medira' && <footer className="app-footer">
         <a
-          href={appMode === 'chrona'
-            ? 'https://www.flaticon.com/free-icons/camera'
-            : 'https://www.flaticon.com/free-icon/pill_3567506'}
+          href="https://www.flaticon.com/free-icon/pill_3567506"
           target="_blank"
           rel="noopener noreferrer"
-          title={appMode === 'chrona' ? 'Shutter icons created by Flaticon' : 'Medication icon created by Freepik'}
+          title="Medication icon created by Freepik"
         >
-          {appMode === 'chrona' ? 'Shutter icon by Flaticon' : 'Medication icon by Freepik — Flaticon'}
+          Medication icon by Freepik — Flaticon
         </a>
-      </footer>
+      </footer>}
     </div>
   )
 }
