@@ -151,6 +151,8 @@ test('get returns participant and observer membership with derived group complet
     completedParticipantIds: ['7'],
     complete: true,
   })
+  assert.ok(pool.calls.some(({ text }) =>
+    text.includes('completion_date::text AS completion_date')))
 })
 
 test('observers can read membership data but cannot administer', async () => {

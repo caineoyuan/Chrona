@@ -94,7 +94,8 @@ async function loadBuddy(client, id, userId) {
       [id],
     ),
     client.query(
-      `SELECT user_id, period_key, completion_date, local_completed_at,
+      `SELECT user_id, period_key, completion_date::text AS completion_date,
+              local_completed_at,
               completed_at, source
        FROM buddy_streak_completions
        WHERE buddy_streak_id = $1

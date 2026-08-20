@@ -84,7 +84,7 @@ export async function queueAutomaticBuddyReminders(queryFn, instant = new Date()
           [streakId],
         ),
         queryFn(
-          `SELECT user_id, period_key, completion_date
+          `SELECT user_id, period_key, completion_date::text AS completion_date
            FROM buddy_streak_completions
            WHERE buddy_streak_id = $1 AND period_key = $2`,
           [streakId, periodKey],
@@ -95,7 +95,7 @@ export async function queueAutomaticBuddyReminders(queryFn, instant = new Date()
       streakData.set(streakId, data)
     } else if (!data.completionsByPeriod.has(periodKey)) {
       const completions = await queryFn(
-        `SELECT user_id, period_key, completion_date
+        `SELECT user_id, period_key, completion_date::text AS completion_date
          FROM buddy_streak_completions
          WHERE buddy_streak_id = $1 AND period_key = $2`,
         [streakId, periodKey],
