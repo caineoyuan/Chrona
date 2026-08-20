@@ -81,6 +81,7 @@ test('Chrona integrates buddy and spectator sharing across home and run views', 
   assert.match(home, /<small className="ring-counter-label">friends<\/small>/)
   assert.match(home, /<small className="ring-counter-label">days<\/small>/)
   assert.match(home, /const participatingFriend = buddyStreak[\s\S]*hasParticipatingFriend\(buddyStreak, user\.id\)/)
+  assert.match(home, /normalizeSchedule\(set\)\.mode === 'weekly'[\s\S]*weekDates\(\)/)
   assert.match(home, /\{streakCounter\}[\s\S]*<FireStrip set=\{set\} compact \/>[\s\S]*className="card-ring-counters"[\s\S]*<WeeklyRing set=\{set\} \/>/)
   assert.match(css, /\.weekly-streak > \.fire-strip \{[^}]*margin-left: auto;/)
   assert.match(css, /\.card-streak\.weekly-streak \{[^}]*margin-top: 14px;/)

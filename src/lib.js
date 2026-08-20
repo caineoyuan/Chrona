@@ -255,6 +255,12 @@ export function computeStreak(set, now = new Date()) {
 
 export const weeklyTarget = (set) => normalizeSchedule(set).timesPerWeek
 
+// Sunday through Saturday for the streak week containing `date`.
+export function weekDates(date = streakDate()) {
+  const ws = startOfWeek(date)
+  return Array.from({ length: 7 }, (_, index) => addDays(ws, index))
+}
+
 // Distinct completed/frozen days within the week containing `date`.
 export function weeklyCount(set, date = streakDate()) {
   const ws = startOfWeek(date)

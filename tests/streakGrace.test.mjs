@@ -8,6 +8,7 @@ import {
   streakCalendarMonths,
   todayKey,
   toggleSetCompleteToday,
+  weekDates,
 } from '../src/lib.js'
 
 test('calendar completion edits update the canonical set completion map', () => {
@@ -62,6 +63,21 @@ test('credits a grace-period completion to the prior due date', () => {
 
   assert.equal(completed.completions['2026-08-06'], true)
   assert.equal(completed.completions['2026-08-07'], undefined)
+})
+
+test('weekly card dates always span the active Sunday through Saturday', () => {
+  assert.deepEqual(
+    weekDates(new Date(2026, 7, 20, 12)).map(dateKey),
+    [
+      '2026-08-16',
+      '2026-08-17',
+      '2026-08-18',
+      '2026-08-19',
+      '2026-08-20',
+      '2026-08-21',
+      '2026-08-22',
+    ],
+  )
 })
 
 test('does not break a streak until the 12:30 AM deadline passes', () => {

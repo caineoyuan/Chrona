@@ -19,6 +19,7 @@ import {
   normalizeSchedule,
   weeklyTarget,
   weeklyCount,
+  weekDates,
   ringColor,
   isDoneForToday,
   streakDate,
@@ -28,7 +29,9 @@ import {
 } from '../lib.js'
 
 function FireStrip({ set, compact = false }) {
-  const days = lastScheduledDates(set, 7)
+  const days = normalizeSchedule(set).mode === 'weekly'
+    ? weekDates()
+    : lastScheduledDates(set, 7)
   return (
     <div className={`fire-strip${compact ? ' compact' : ''}`}>
       {days.map((d) => {
