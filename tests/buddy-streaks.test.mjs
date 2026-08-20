@@ -336,7 +336,9 @@ test('ping rejects self and already-completed recipients', async () => {
           }],
         }
       }
-      if (text.includes('FROM buddy_streak_completions')) return { rows: [{ exists: 1 }] }
+      if (text.includes('FROM buddy_streak_completions')) {
+        return { rows: [{ completion_count: 1 }] }
+      }
       return { rows: [] }
     })
 
@@ -411,10 +413,52 @@ test('participants can add and remove a dated completion from shared history', a
   assert.ok(pool.calls.some(({ text, params }) =>
     text.includes('INSERT INTO buddy_streak_completions') &&
     params[2] === 'day:2026-08-03' &&
-    params[3] === '2026-08-03 12:00:00'))
+    params[3] === '2026-08-03' &&
+    params[4] === '2026-08-03 12:00:00' &&
+    text.includes('completion_date')))
   assert.ok(pool.calls.some(({ text, params }) =>
     text.includes('DELETE FROM buddy_streak_completions') &&
-    params[2] === 'day:2026-08-03'))
+    params[2] === 'day:2026-08-03' &&
+    params[3] === '2026-08-03' &&
+    text.includes('completion_date = $4')))
+})
+
+test('weekly dated completions use independent completion-date keys', async () => {
+  const pool = fakePool(async (text) => {
+    if (text.includes('FROM buddy_streak_members member')) {
+      return {
+        rows: [{
+          role: 'participant',
+          timezone: 'UTC',
+          definition: {
+            name: 'Gym',
+            createdAt: '2026-08-01T12:00:00.000Z',
+            schedule: { mode: 'weekly', timesPerWeek: 6 },
+          },
+          version: 1,
+        }],
+      }
+    }
+    return { rows: [] }
+  })
+
+  await request(pool, '/12/completions/2026-08-03', { method: 'PUT' })
+  await request(pool, '/12/completions/2026-08-04', { method: 'PUT' })
+  await request(pool, '/12/completions/2026-08-03', { method: 'DELETE' })
+
+  const inserts = pool.calls.filter(({ text }) =>
+    text.includes('INSERT INTO buddy_streak_completions'))
+  assert.deepEqual(inserts.map(({ params }) => params.slice(2, 5)), [
+    ['week:2026-08-02', '2026-08-03', '2026-08-03 12:00:00'],
+    ['week:2026-08-02', '2026-08-04', '2026-08-04 12:00:00'],
+  ])
+  assert.ok(inserts.every(({ text }) =>
+    text.includes('buddy_streak_id, user_id, period_key, completion_date')))
+  const deletion = pool.calls.find(({ text, params }) =>
+    text.includes('DELETE FROM buddy_streak_completions') &&
+    params[3] === '2026-08-03')
+  assert.ok(deletion)
+  assert.match(deletion.text, /completion_date = \$4/)
 })
 
 test('participants can remove a member and create a private removal activity', async () => {

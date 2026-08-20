@@ -3,6 +3,7 @@ import {
   isBuddyOccurrenceScheduled,
   isEffectiveParticipant,
   normalizeIanaTimezone,
+  occurrenceCompletion,
   zonedParts,
 } from './buddy-core.js'
 import { insertCollaborationEvent } from './collaboration-events.js'
@@ -83,31 +84,30 @@ export async function queueAutomaticBuddyReminders(queryFn, instant = new Date()
           [streakId],
         ),
         queryFn(
-          `SELECT user_id, period_key
+          `SELECT user_id, period_key, completion_date
            FROM buddy_streak_completions
            WHERE buddy_streak_id = $1 AND period_key = $2`,
           [streakId, periodKey],
         ),
       ])
       data = { members: members.rows, completionsByPeriod: new Map() }
-      data.completionsByPeriod.set(
-        periodKey,
-        new Set(completions.rows.map(({ user_id }) => String(user_id))),
-      )
+      data.completionsByPeriod.set(periodKey, completions.rows)
       streakData.set(streakId, data)
     } else if (!data.completionsByPeriod.has(periodKey)) {
       const completions = await queryFn(
-        `SELECT user_id, period_key
+        `SELECT user_id, period_key, completion_date
          FROM buddy_streak_completions
          WHERE buddy_streak_id = $1 AND period_key = $2`,
         [streakId, periodKey],
       )
-      data.completionsByPeriod.set(
-        periodKey,
-        new Set(completions.rows.map(({ user_id }) => String(user_id))),
-      )
+      data.completionsByPeriod.set(periodKey, completions.rows)
     }
-    const completed = data.completionsByPeriod.get(periodKey)
+    const completed = new Set(occurrenceCompletion(
+      periodKey,
+      data.members,
+      data.completionsByPeriod.get(periodKey),
+      candidate.definition,
+    ).completedParticipantIds)
     const incompleteNames = data.members
       .filter((member) => isEffectiveParticipant(member, periodKey))
       .filter((member) => !completed.has(String(member.user_id)))

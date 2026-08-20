@@ -7,7 +7,7 @@ import {
   localStreakDate,
   membershipDates,
   occurrenceCompletion,
-  privateCompletionPeriodKeys,
+  privateCompletionEntries,
 } from '../server/buddy-core.js'
 
 test('member-local daily periods retain the existing 12:30 AM grace minute', () => {
@@ -105,6 +105,40 @@ test('an occurrence completes only when every effective participant completes', 
   assert.deepEqual(second.participantIds, ['1', '2'])
 })
 
+test('weekly targets require distinct completion dates from every participant', () => {
+  const definition = { schedule: { mode: 'weekly', timesPerWeek: 3 } }
+  const members = [
+    { userId: '1', role: 'participant', timezone: 'UTC', activeAt: '2026-08-01' },
+    { userId: '2', role: 'participant', timezone: 'UTC', activeAt: '2026-08-01' },
+  ]
+  const completions = [
+    { userId: '1', periodKey: 'week:2026-08-02', completionDate: '2026-08-03' },
+    { userId: '1', periodKey: 'week:2026-08-02', completionDate: '2026-08-05' },
+    { userId: '1', periodKey: 'week:2026-08-02', completionDate: '2026-08-07' },
+    { userId: '2', periodKey: 'week:2026-08-02', completionDate: '2026-08-03' },
+    { userId: '2', periodKey: 'week:2026-08-02', completionDate: '2026-08-05' },
+  ]
+  const incomplete = occurrenceCompletion(
+    'week:2026-08-02',
+    members,
+    completions,
+    definition,
+  )
+  assert.deepEqual(incomplete.completedParticipantIds, ['1'])
+  assert.equal(incomplete.complete, false)
+  completions.push({
+    userId: '2',
+    periodKey: 'week:2026-08-02',
+    completionDate: '2026-08-07',
+  })
+  assert.equal(occurrenceCompletion(
+    'week:2026-08-02',
+    members,
+    completions,
+    definition,
+  ).complete, true)
+})
+
 test('group streak walks scheduled occurrences and treats today as in progress', () => {
   const definition = {
     createdAt: '2026-08-01T00:00:00.000Z',
@@ -135,7 +169,10 @@ test('private promotion maps completion history without mutating private data', 
     schedule: { mode: 'weekly', timesPerWeek: 2 },
     completions: { '2026-08-03': true, '2026-08-06': true },
   }
-  assert.deepEqual(privateCompletionPeriodKeys(set), ['week:2026-08-02'])
+  assert.deepEqual(privateCompletionEntries(set), [
+    { completionDate: '2026-08-03', periodKey: 'week:2026-08-02' },
+    { completionDate: '2026-08-06', periodKey: 'week:2026-08-02' },
+  ])
   assert.deepEqual(set.completions, {
     '2026-08-03': true,
     '2026-08-06': true,

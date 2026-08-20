@@ -3,24 +3,12 @@ import { api, isLocalPreview } from './auth.jsx'
 import { buddyStreakClient } from './buddy-streak-client.js'
 import { completionMapForUser, todayKey } from './lib.js'
 
-function completionPeriod(definition, dateKey) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return null
-  if (definition?.schedule?.mode !== 'weekly') return `day:${dateKey}`
-  const date = new Date(`${dateKey}T12:00:00Z`)
-  date.setUTCDate(date.getUTCDate() - date.getUTCDay())
-  return `week:${date.toISOString().slice(0, 10)}`
-}
-
 export function buddySetForUser(streak, userId, fallback = {}) {
   const definition = streak.definition || {}
-  const completed = new Set(streak.currentOccurrence?.completedParticipantIds || [])
-  const selfCompleted = streak.optimisticCompleted === undefined
-    ? completed.has(String(userId))
-    : streak.optimisticCompleted
   const key = todayKey()
   const completions = completionMapForUser(streak.completions, userId)
-  if (selfCompleted) completions[key] = true
-  else delete completions[key]
+  if (streak.optimisticCompleted === true) completions[key] = true
+  if (streak.optimisticCompleted === false) delete completions[key]
   return {
     ...fallback,
     ...definition,
@@ -142,19 +130,15 @@ export function useBuddyStreaks() {
     id,
     (items) => items.map((item) => {
       if (item.id !== id) return item
-      const targetPeriod = completionPeriod(item.definition, dateKey)
       const history = (item.completions || []).filter((entry) =>
         String(entry.userId) !== String(userId) ||
-        completionPeriod(
-          item.definition,
-          String(entry.localCompletedAt || entry.periodKey?.slice(4) || '').slice(0, 10),
-        ) !== targetPeriod)
+        String(entry.completionDate || entry.localCompletedAt || '').slice(0, 10) !== dateKey)
       return {
         ...item,
         completions: completed ? [...history, {
           userId: String(userId),
+          completionDate: dateKey,
           localCompletedAt: `${dateKey}T12:00:00.000Z`,
-          periodKey: targetPeriod,
           source: 'manual',
         }] : history,
       }

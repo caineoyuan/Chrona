@@ -4,13 +4,14 @@ import { pool } from './db.js'
 import {
   buddyPeriodKey,
   buddyPeriodKeyForDate,
+  buddyCompletionTarget,
   computeGroupStreak,
   localCalendarDate,
+  localStreakDate,
   membershipDates,
   normalizeIanaTimezone,
   occurrenceCompletion,
-  periodBounds,
-  privateCompletionPeriodKeys,
+  privateCompletionEntries,
   sanitizeBuddyDefinition,
 } from './buddy-core.js'
 import {
@@ -56,6 +57,9 @@ function completionFromRow(row) {
   return {
     userId: String(row.user_id),
     periodKey: row.period_key,
+    completionDate: row.completion_date
+      ? String(row.completion_date).slice(0, 10)
+      : String(row.local_completed_at || '').slice(0, 10),
     localCompletedAt: row.local_completed_at,
     completedAt: row.completed_at,
     source: row.source,
@@ -90,7 +94,8 @@ async function loadBuddy(client, id, userId) {
       [id],
     ),
     client.query(
-      `SELECT user_id, period_key, local_completed_at, completed_at, source
+      `SELECT user_id, period_key, completion_date, local_completed_at,
+              completed_at, source
        FROM buddy_streak_completions
        WHERE buddy_streak_id = $1
        ORDER BY period_key, user_id`,
@@ -112,6 +117,7 @@ async function loadBuddy(client, id, userId) {
     currentPeriodKey,
     members,
     completions,
+    streak.definition,
   )
   return {
     id: String(streak.id),
@@ -128,7 +134,7 @@ async function loadBuddy(client, id, userId) {
     currentPeriodKey,
     currentOccurrence,
     occurrences: periodKeys.map((key) =>
-      occurrenceCompletion(key, members, completions)),
+      occurrenceCompletion(key, members, completions, streak.definition)),
     groupStreak: computeGroupStreak(
       streak.definition,
       members,
@@ -308,17 +314,19 @@ export function createBuddyStreaksRouter(poolFn = pool) {
             effectiveAt,
           ],
         )
-        for (const periodKey of privateCompletionPeriodKeys(set)) {
+        for (const { periodKey, completionDate } of privateCompletionEntries(set)) {
           await client.query(
             `INSERT INTO buddy_streak_completions (
-               buddy_streak_id, user_id, period_key, local_completed_at, source
-             ) VALUES ($1, $2, $3, $4, 'import')
+               buddy_streak_id, user_id, period_key, completion_date,
+               local_completed_at, source
+             ) VALUES ($1, $2, $3, $4, $5, 'import')
              ON CONFLICT DO NOTHING`,
             [
               id,
               req.userId,
               periodKey,
-              `${periodBounds(periodKey).start} 12:00:00`,
+              completionDate,
+              `${completionDate} 12:00:00`,
             ],
           )
         }
@@ -497,15 +505,25 @@ export function createBuddyStreaksRouter(poolFn = pool) {
         if (!timezone) return { status: 'timezone' }
         const now = new Date()
         const periodKey = buddyPeriodKey(membership.definition, now, timezone)
+        const completionDate = localStreakDate(now, timezone)
         await client.query(
           `INSERT INTO buddy_streak_completions (
-             buddy_streak_id, user_id, period_key, local_completed_at, source
-           ) VALUES ($1, $2, $3, $4, 'manual')
-           ON CONFLICT (buddy_streak_id, user_id, period_key) DO UPDATE
+             buddy_streak_id, user_id, period_key, completion_date,
+             local_completed_at, source
+           ) VALUES ($1, $2, $3, $4, $5, 'manual')
+           ON CONFLICT (
+             buddy_streak_id, user_id, period_key, completion_date
+           ) DO UPDATE
            SET local_completed_at = EXCLUDED.local_completed_at,
                completed_at = now(),
                source = EXCLUDED.source`,
-          [id, req.userId, periodKey, localTimestamp(now, timezone)],
+          [
+            id,
+            req.userId,
+            periodKey,
+            completionDate,
+            localTimestamp(now, timezone),
+          ],
         )
         await notifyActiveBuddyMembers(client, {
           buddyStreakId: id,
@@ -549,11 +567,14 @@ export function createBuddyStreaksRouter(poolFn = pool) {
       }
       const timezone = normalizeIanaTimezone(membership.timezone)
       if (!timezone) return res.status(409).json({ error: 'Member timezone is invalid.' })
-      const periodKey = buddyPeriodKey(membership.definition, new Date(), timezone)
+      const now = new Date()
+      const periodKey = buddyPeriodKey(membership.definition, now, timezone)
+      const completionDate = localStreakDate(now, timezone)
       await poolFn.query(
         `DELETE FROM buddy_streak_completions
-         WHERE buddy_streak_id = $1 AND user_id = $2 AND period_key = $3`,
-        [id, req.userId, periodKey],
+         WHERE buddy_streak_id = $1 AND user_id = $2 AND period_key = $3
+           AND completion_date = $4`,
+        [id, req.userId, periodKey, completionDate],
       )
       await publishBuddyChange(poolFn, id, req.userId, {
         change: 'completion',
@@ -590,13 +611,22 @@ export function createBuddyStreaksRouter(poolFn = pool) {
       }
       await poolFn.query(
         `INSERT INTO buddy_streak_completions (
-           buddy_streak_id, user_id, period_key, local_completed_at, source
-         ) VALUES ($1, $2, $3, $4, 'manual')
-         ON CONFLICT (buddy_streak_id, user_id, period_key) DO UPDATE
+           buddy_streak_id, user_id, period_key, completion_date,
+           local_completed_at, source
+         ) VALUES ($1, $2, $3, $4, $5, 'manual')
+         ON CONFLICT (
+           buddy_streak_id, user_id, period_key, completion_date
+         ) DO UPDATE
          SET local_completed_at = EXCLUDED.local_completed_at,
              completed_at = now(),
              source = EXCLUDED.source`,
-        [id, req.userId, periodKey, `${req.params.dateKey} 12:00:00`],
+        [
+          id,
+          req.userId,
+          periodKey,
+          req.params.dateKey,
+          `${req.params.dateKey} 12:00:00`,
+        ],
       )
       await publishBuddyChange(poolFn, id, req.userId, {
         change: 'completion',
@@ -632,8 +662,9 @@ export function createBuddyStreaksRouter(poolFn = pool) {
       }
       await poolFn.query(
         `DELETE FROM buddy_streak_completions
-         WHERE buddy_streak_id = $1 AND user_id = $2 AND period_key = $3`,
-        [id, req.userId, periodKey],
+         WHERE buddy_streak_id = $1 AND user_id = $2 AND period_key = $3
+           AND completion_date = $4`,
+        [id, req.userId, periodKey, req.params.dateKey],
       )
       await publishBuddyChange(poolFn, id, req.userId, {
         change: 'completion',
@@ -681,11 +712,15 @@ export function createBuddyStreaksRouter(poolFn = pool) {
         if (!timezone) return { status: 'timezone' }
         const periodKey = buddyPeriodKey(sender.definition, new Date(), timezone)
         const completion = await client.query(
-          `SELECT 1 FROM buddy_streak_completions
+          `SELECT count(DISTINCT completion_date)::integer AS completion_count
+           FROM buddy_streak_completions
            WHERE buddy_streak_id = $1 AND user_id = $2 AND period_key = $3`,
           [id, recipientUserId, periodKey],
         )
-        if (completion.rows[0]) return { status: 'completed' }
+        const target = buddyCompletionTarget(sender.definition, periodKey)
+        if (Number(completion.rows[0]?.completion_count) >= target) {
+          return { status: 'completed' }
+        }
         const lockKey = `buddy:${id}:sender:${req.userId}:recipient:${recipientUserId}`
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
           lockKey,

@@ -51,7 +51,8 @@ test('shared streak calendar reads every personal completion from the shared sou
   const completions = completionMapForUser([{
     userId: '7',
     periodKey: 'day:2026-08-16',
-    localCompletedAt: '2026-08-16T18:30:00.000Z',
+    completionDate: '2026-08-16',
+    localCompletedAt: '2026-08-17T00:15:00.000Z',
   }, {
     userId: '8',
     periodKey: 'day:2026-08-17',

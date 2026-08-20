@@ -675,6 +675,100 @@ export const migrations = [
         AND medication.medication_data->'recurrenceAnchor' IS NULL;
     `,
   },
+  {
+    version: 16,
+    name: 'preserve_buddy_completion_dates',
+    up: `
+      ALTER TABLE buddy_streak_completions
+        ADD COLUMN IF NOT EXISTS completion_date DATE;
+
+      UPDATE buddy_streak_completions
+      SET completion_date = CASE
+        WHEN period_key ~ '^day:[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN
+          substring(period_key FROM 5)::date
+        WHEN period_key ~ '^week:[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+          AND local_completed_at::date NOT BETWEEN
+            substring(period_key FROM 6)::date
+            AND substring(period_key FROM 6)::date + 6
+          THEN substring(period_key FROM 6)::date + 6
+        ELSE local_completed_at::date
+      END
+      WHERE completion_date IS NULL;
+
+      ALTER TABLE buddy_streak_completions
+        ALTER COLUMN completion_date SET NOT NULL;
+
+      ALTER TABLE buddy_streak_completions
+        DROP CONSTRAINT IF EXISTS buddy_streak_completions_pkey;
+      ALTER TABLE buddy_streak_completions
+        ADD PRIMARY KEY (
+          buddy_streak_id, user_id, period_key, completion_date
+        );
+
+      DELETE FROM buddy_streak_completions completion
+      USING buddy_streaks streak
+      WHERE completion.buddy_streak_id = streak.id
+        AND streak.legacy_set_id IS NOT NULL
+        AND completion.source = 'import'
+        AND EXISTS (
+          SELECT 1
+          FROM user_sets sets
+          CROSS JOIN LATERAL jsonb_array_elements(sets.sets) private_set(value)
+          WHERE sets.user_id = streak.created_by_user_id
+            AND private_set.value->>'id' = streak.legacy_set_id
+        );
+
+      WITH private_completion_dates AS (
+        SELECT
+          streak.id AS buddy_streak_id,
+          streak.created_by_user_id AS user_id,
+          streak.definition,
+          completion.key AS completion_date_text,
+          to_date(completion.key, 'YYYY-MM-DD') AS completion_date
+        FROM buddy_streaks streak
+        JOIN user_sets sets ON sets.user_id = streak.created_by_user_id
+        CROSS JOIN LATERAL jsonb_array_elements(sets.sets) private_set(value)
+        CROSS JOIN LATERAL jsonb_each_text(
+          CASE
+            WHEN jsonb_typeof(private_set.value->'completions') = 'object'
+              THEN private_set.value->'completions'
+            ELSE '{}'::jsonb
+          END
+        ) completion
+        WHERE streak.legacy_set_id IS NOT NULL
+          AND streak.deleted_at IS NULL
+          AND private_set.value->>'id' = streak.legacy_set_id
+          AND completion.value = 'true'
+          AND completion.key ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+          AND to_char(to_date(completion.key, 'YYYY-MM-DD'), 'YYYY-MM-DD') =
+            completion.key
+      )
+      INSERT INTO buddy_streak_completions (
+        buddy_streak_id,
+        user_id,
+        period_key,
+        completion_date,
+        local_completed_at,
+        source
+      )
+      SELECT
+        buddy_streak_id,
+        user_id,
+        CASE
+          WHEN definition->'schedule'->>'mode' = 'weekly' THEN
+            'week:' || to_char(
+              completion_date - EXTRACT(DOW FROM completion_date)::integer,
+              'YYYY-MM-DD'
+            )
+          ELSE 'day:' || completion_date_text
+        END,
+        completion_date,
+        completion_date + time '12:00:00',
+        'import'
+      FROM private_completion_dates
+      ON CONFLICT DO NOTHING;
+    `,
+  },
 ]
 
 export function migrationChecksum(migration) {

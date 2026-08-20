@@ -52,7 +52,10 @@ export function completionMapForUser(completions, userId) {
     .filter((completion) => String(completion.userId) === String(userId))
     .map((completion) => {
       const completedDate = String(
-        completion.localCompletedAt || completion.periodKey?.slice(4) || '',
+        completion.completionDate ||
+        completion.localCompletedAt ||
+        completion.periodKey?.slice(4) ||
+        '',
       ).slice(0, 10)
       return [completedDate, true]
     })

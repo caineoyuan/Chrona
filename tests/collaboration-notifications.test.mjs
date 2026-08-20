@@ -113,6 +113,59 @@ test('automatic reminders are durable, deduplicated, and push-requested', async 
     phase: 'afternoon',
     incompleteDisplayUsernames: ['Sam'],
   })
+
+  test('weekly reminders wait until each participant meets the date target', async () => {
+    const calls = []
+    const query = async (text, params = []) => {
+      calls.push({ text, params })
+      if (text.includes('recipient.user_id')) {
+        return {
+          rows: [{
+            buddy_streak_id: 12,
+            definition: { schedule: { mode: 'weekly', timesPerWeek: 2 } },
+            recipient_user_id: 7,
+            timezone: 'UTC',
+          }],
+        }
+      }
+      if (text.includes('member.active_at')) {
+        return {
+          rows: [{
+            user_id: 7,
+            role: 'participant',
+            timezone: 'UTC',
+            active_at: '2026-08-01T00:00:00.000Z',
+            removed_at: null,
+            username: 'alex',
+            display_username: 'Alex',
+          }],
+        }
+      }
+      if (text.includes('FROM buddy_streak_completions')) {
+        return {
+          rows: [{
+            user_id: 7,
+            period_key: 'week:2026-08-09',
+            completion_date: '2026-08-10',
+          }],
+        }
+      }
+      if (text.includes('INSERT INTO collaboration_events')) {
+        return { rows: [{ id: 45 }], rowCount: 1 }
+      }
+      return { rows: [] }
+    }
+
+    assert.equal(
+      await queueAutomaticBuddyReminders(
+        query,
+        new Date('2026-08-09T17:00:00.000Z'),
+      ),
+      1,
+    )
+    const insert = calls.find(({ text }) => text.includes('INSERT INTO collaboration_events'))
+    assert.deepEqual(JSON.parse(insert.params[5]).incompleteDisplayUsernames, ['Alex'])
+  })
   assert.equal(
     insert.params[6],
     'buddy:12:recipient:7:period:day:2026-08-09:phase:afternoon',

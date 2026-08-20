@@ -25,7 +25,7 @@ function fakePool(appliedRows = [], failSql = null) {
 }
 
 test('migrations are ordered and contain the planned sharing schema', () => {
-  assert.deepEqual(migrations.map(({ version }) => version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
+  assert.deepEqual(migrations.map(({ version }) => version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])
   const sql = migrations.map(({ up }) => up).join('\n')
   for (const table of [
     'user_identities',
@@ -60,6 +60,8 @@ test('migrations are ordered and contain the planned sharing schema', () => {
   assert.match(sql, /ADD COLUMN IF NOT EXISTS avatar_data BYTEA/)
   assert.match(sql, /jsonb_build_object\(\s*'history'/)
   assert.match(sql, /backfill_medication_recurrence_anchors|migrated-taken/)
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS completion_date DATE/)
+  assert.match(sql, /buddy_streak_id, user_id, period_key, completion_date/)
   assert.match(sql, /users_avatar_metadata_check/)
   assert.doesNotMatch(sql, /DROP TABLE user_medications/)
 })

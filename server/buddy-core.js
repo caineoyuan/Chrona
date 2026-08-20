@@ -108,15 +108,37 @@ export function isEffectiveParticipant(member, periodKey) {
     (!effectiveTo || effectiveTo > bounds.start)
 }
 
-export function occurrenceCompletion(periodKey, members, completions) {
+export function buddyCompletionTarget(definition, periodKey) {
+  if (periodBounds(periodKey)?.kind !== 'week') return 1
+  const target = Number(definition?.schedule?.timesPerWeek)
+  return Number.isFinite(target) ? Math.min(7, Math.max(1, Math.trunc(target))) : 1
+}
+
+function completionDateKey(completion) {
+  return String(
+    completion.completionDate ??
+    completion.completion_date ??
+    completion.localCompletedAt ??
+    completion.local_completed_at ??
+    '',
+  ).slice(0, 10)
+}
+
+export function occurrenceCompletion(periodKey, members, completions, definition = {}) {
   const participantIds = members
     .filter((member) => isEffectiveParticipant(member, periodKey))
     .map((member) => String(member.userId ?? member.user_id))
+  const target = buddyCompletionTarget(definition, periodKey)
+  const datesByParticipant = new Map()
+  for (const completion of completions) {
+    if (completion.periodKey !== periodKey && completion.period_key !== periodKey) continue
+    const userId = String(completion.userId ?? completion.user_id)
+    const completionDate = completionDateKey(completion)
+    if (!datesByParticipant.has(userId)) datesByParticipant.set(userId, new Set())
+    datesByParticipant.get(userId).add(completionDate || periodKey)
+  }
   const completedIds = new Set(
-    completions
-      .filter((completion) => completion.periodKey === periodKey ||
-        completion.period_key === periodKey)
-      .map((completion) => String(completion.userId ?? completion.user_id)),
+    participantIds.filter((id) => (datesByParticipant.get(id)?.size || 0) >= target),
   )
   return {
     periodKey,
@@ -199,7 +221,7 @@ export function computeGroupStreak(
   timezone = 'UTC',
 ) {
   let key = buddyPeriodKey(definition, instant, timezone)
-  let summary = occurrenceCompletion(key, members, completions)
+  let summary = occurrenceCompletion(key, members, completions, definition)
   let streak = 0
   if (summary.complete) {
     streak++
@@ -207,7 +229,7 @@ export function computeGroupStreak(
   }
   else key = previousOccurrenceKey(definition, key)
   for (let i = 0; key && i < 3650; i++) {
-    summary = occurrenceCompletion(key, members, completions)
+    summary = occurrenceCompletion(key, members, completions, definition)
     if (!summary.complete) break
     streak++
     key = previousOccurrenceKey(definition, key)
@@ -235,13 +257,13 @@ export function sanitizeBuddyDefinition(value) {
   return definition
 }
 
-export function privateCompletionPeriodKeys(set) {
+export function privateCompletionEntries(set) {
   const definition = sanitizeBuddyDefinition(set)
   if (!definition) return []
   return Object.entries(set?.completions || {})
     .filter(([key, completed]) => completed && dateFromKey(key))
-    .map(([key]) => buddyPeriodKind(definition) === 'week'
-      ? `week:${addDays(key, -dateFromKey(key).getUTCDay())}`
-      : `day:${key}`)
-    .filter((key, index, keys) => keys.indexOf(key) === index)
+    .map(([completionDate]) => ({
+      completionDate,
+      periodKey: buddyPeriodKeyForDate(definition, completionDate),
+    }))
 }
