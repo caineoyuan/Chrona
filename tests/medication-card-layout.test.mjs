@@ -19,12 +19,9 @@ test('medication list cards use their full width and show concise schedule detai
   assert.doesNotMatch(card, /How to take|Doses taken|Starts /)
   assert.match(app, /dose\.overdue && \(/)
   assert.match(app, /className="overdue-origin"/)
-  assert.match(app, /Future dose time changes/)
-  assert.match(app, /Ask every time/)
-  assert.match(app, /Always update/)
-  assert.match(app, /Never update/)
+  assert.match(app, /Ask before changing future dose times/)
   assert.match(app, /Would you like future doses to use this time\?/)
-  assert.match(app, /Do not ask again/)
+  assert.match(app, /Do not ask again for this medication/)
   assert.match(css, /\.dose-info span\.overdue-origin \{ color: var\(--gold\); font-weight: 600; \}/)
   assert.match(
     css,

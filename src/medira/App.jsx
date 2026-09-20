@@ -1203,22 +1203,25 @@ function MedicationDetails({
           </div>
         </div>
         {permissions.canViewSchedule && (
-          <fieldset className="detail-schedule-adjustment" disabled={!permissions.canEdit}>
-            <legend>Future dose time changes</legend>
-            {[
-              [null, 'Ask every time'],
-              ['yes', 'Always update'],
-              ['no', 'Never update'],
-            ].map(([preference, label]) => (
-              <label key={label}>
-                <input type="radio" name={`schedule-adjustment-${medication.id}`}
-                  checked={(medication.scheduleAdjustmentPreference ?? null) === preference}
-                  onChange={() => onScheduleAdjustmentPreference(medication, preference)} />
-                <span>{label}</span>
-              </label>
-            ))}
-            <small>Applies when a dose is taken early or late.</small>
-          </fieldset>
+          <label className="detail-schedule-adjustment">
+            <input type="checkbox"
+              checked={medication.scheduleAdjustmentPreference == null}
+              disabled={!permissions.canEdit}
+              onChange={(event) => onScheduleAdjustmentPreference(
+                medication,
+                event.target.checked ? null : 'no',
+              )} />
+            <span>
+              <strong>Ask before changing future dose times</strong>
+              <small>
+                {medication.scheduleAdjustmentPreference === 'yes'
+                  ? 'Off · future times update automatically'
+                  : medication.scheduleAdjustmentPreference === 'no'
+                    ? 'Off · future times stay unchanged'
+                    : 'On for this medication'}
+              </small>
+            </span>
+          </label>
         )}
         {medication.trackInjectionSite && <section className="detail-site-map">
           <InjectionSiteMap medication={medication} compact />
@@ -2076,7 +2079,7 @@ function App({ colorScheme = 'dark' }) {
             <label className="remember-adjustment">
               <input type="checkbox" checked={rememberScheduleAdjustment}
                 onChange={(event) => setRememberScheduleAdjustment(event.target.checked)} />
-              <span>Do not ask again</span>
+              <span>Do not ask again for this medication</span>
             </label>
             <div className="modal-actions">
               <button className="ghost-btn" onClick={() => completeTaken(
