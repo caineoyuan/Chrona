@@ -222,7 +222,7 @@ test('schedules medication every N days from its anchor date', () => {
   assert.equal(next.scheduledAt.getHours(), 9)
 })
 
-test('anchors every-N-days dates to the latest taken date without changing clock time', () => {
+test('declining an every-N-days adjustment keeps its date cadence and clock time', () => {
   const med = medication({
     type: 'day-interval',
     intervalDays: 3,
@@ -233,11 +233,11 @@ test('anchors every-N-days dates to the latest taken date without changing clock
   }, ['09:00'])
   const scheduledAt = new Date('2026-08-03T09:00:00')
   const takenAt = new Date('2026-08-04T10:30:00')
-  const updated = applyTaken(med, scheduledAt, takenAt)
+  const updated = applyTaken(med, scheduledAt, takenAt, 0, false)
   const next = getNextDose([updated], new Date('2026-08-04T10:31:00'))
 
   assert.deepEqual(updated.times, ['09:00'])
-  assert.equal(next.scheduledAt.getDate(), 7)
+  assert.equal(next.scheduledAt.getDate(), 6)
   assert.equal(next.scheduledAt.getHours(), 9)
   assert.equal(next.scheduledAt.getMinutes(), 0)
   assert.equal(getActionableDoses([updated], new Date('2026-08-05T10:30:00')).length, 0)
@@ -252,7 +252,13 @@ test('keeps the configured minute for an on-time every-N-days dose', () => {
     anchorAt: '2026-08-03T09:00:00',
     changes: [],
   }, ['09:00'])
-  const updated = applyTaken(med, new Date('2026-08-03T09:00:00'), new Date('2026-08-03T09:15:00'))
+  const updated = applyTaken(
+    med,
+    new Date('2026-08-03T09:00:00'),
+    new Date('2026-08-03T09:15:00'),
+    0,
+    false,
+  )
   const next = getNextDose([updated], new Date('2026-08-03T09:16:00'))
 
   assert.deepEqual(updated.times, ['09:00'])
@@ -611,10 +617,18 @@ function medication(schedule, times = ['11:00']) {
   }
 }
 
-function applyTaken(med, scheduledAt, takenAt, slotIndex = 0) {
+function applyTaken(
+  med,
+  scheduledAt,
+  takenAt,
+  slotIndex = 0,
+  adjustSchedule = true,
+) {
   const dose = { medication: med, scheduledAt, slotIndex }
-  const adjustment = adjustScheduleAfterDose(med, dose, takenAt)
-  return {
+  const adjustment = adjustScheduleAfterDose(med, dose, takenAt, {
+    adjustSchedule,
+  })
+  return setRecurrenceAnchor({
     ...med,
     times: adjustment.times,
     schedule: adjustment.schedule,
@@ -624,7 +638,11 @@ function applyTaken(med, scheduledAt, takenAt, slotIndex = 0) {
       takenAt: takenAt.toISOString(),
       status: 'late',
     }],
-  }
+  }, adjustment.recurrenceAt, 'taken', {
+    consumed: true,
+    scheduledAt,
+    slotIndex,
+  })
 }
 
 test('re-anchors a 12-hour schedule to the exact taken time', () => {
@@ -806,19 +824,31 @@ test('edits the exact taken interval record instead of the upcoming dose', () =>
 
 test('keeps weekly and twice-weekly schedules at their set time', () => {
   const weekly = medication({ type: 'weekly', intervalHours: 168, weekdays: [4], anchorAt: null })
-  const weeklyUpdated = applyTaken(weekly, new Date('2026-08-06T11:00:00'), new Date('2026-08-06T15:00:00'))
+  const weeklyUpdated = applyTaken(
+    weekly,
+    new Date('2026-08-06T11:00:00'),
+    new Date('2026-08-06T15:00:00'),
+    0,
+    false,
+  )
   const weeklyNext = getNextDose([weeklyUpdated], new Date('2026-08-06T15:01:00'))
   assert.equal(weeklyNext.scheduledAt.getDay(), 4)
   assert.equal(weeklyNext.scheduledAt.getHours(), 11)
 
   const twiceWeekly = medication({ type: 'weekly', intervalHours: 84, weekdays: [0, 4], anchorAt: null })
-  const twiceUpdated = applyTaken(twiceWeekly, new Date('2026-08-06T11:00:00'), new Date('2026-08-06T15:00:00'))
+  const twiceUpdated = applyTaken(
+    twiceWeekly,
+    new Date('2026-08-06T11:00:00'),
+    new Date('2026-08-06T15:00:00'),
+    0,
+    false,
+  )
   const twiceNext = getNextDose([twiceUpdated], new Date('2026-08-06T15:01:00'))
   assert.equal(twiceNext.scheduledAt.getDay(), 0)
   assert.equal(twiceNext.scheduledAt.getHours(), 11)
 })
 
-test('anchors weekly date gaps to the latest taken owner date', () => {
+test('a confirmed weekly time change preserves the scheduled weekday', () => {
   const weekly = medication({
     type: 'weekly',
     intervalHours: 168,
@@ -833,12 +863,12 @@ test('anchors weekly date gaps to the latest taken owner date', () => {
   )
   const next = getNextDose([updated], new Date('2026-08-11T18:01:00'))
 
-  assert.equal(next.scheduledAt.getDay(), 2)
-  assert.equal(next.scheduledAt.getDate(), 18)
-  assert.equal(next.scheduledAt.getHours(), 13)
+  assert.equal(next.scheduledAt.getDay(), 1)
+  assert.equal(next.scheduledAt.getDate(), 17)
+  assert.equal(next.scheduledAt.getHours(), 18)
 })
 
-test('preserves weekly gap pattern after a late twice-weekly dose', () => {
+test('a confirmed twice-weekly time change preserves the weekday pattern', () => {
   const twiceWeekly = medication({
     type: 'weekly',
     intervalHours: 84,
@@ -853,9 +883,9 @@ test('preserves weekly gap pattern after a late twice-weekly dose', () => {
   )
   const next = getNextDose([updated], new Date('2026-08-14T18:01:00'))
 
-  assert.equal(next.scheduledAt.getDay(), 1)
-  assert.equal(next.scheduledAt.getDate(), 17)
-  assert.equal(next.scheduledAt.getHours(), 13)
+  assert.equal(next.scheduledAt.getDay(), 0)
+  assert.equal(next.scheduledAt.getDate(), 16)
+  assert.equal(next.scheduledAt.getHours(), 18)
 })
 
 test('generates weekly recurrence in owner timezone before viewer conversion', () => {
@@ -903,7 +933,7 @@ test('undoes a taken dose and its automatic daily shift', () => {
   assert.equal(restored.schedule.changes.length, 0)
 })
 
-test('daily doses within one hour keep the scheduled recurrence anchor', () => {
+test('on-time daily doses keep the scheduled recurrence anchor', () => {
   const med = medication({ type: 'daily', intervalHours: 24, weekdays: [], anchorAt: null, changes: [] })
   const scheduledAt = new Date('2026-08-06T11:00:00')
 
@@ -911,7 +941,7 @@ test('daily doses within one hour keep the scheduled recurrence anchor', () => {
     doseScheduleAdjustmentDecision(
       med,
       { scheduledAt },
-      new Date('2026-08-06T12:00:00'),
+      new Date('2026-08-06T11:10:00'),
     ),
     { adjustSchedule: false, prompt: false },
   )
@@ -926,10 +956,10 @@ test('daily doses within one hour keep the scheduled recurrence anchor', () => {
   assert.deepEqual(adjustment.times, ['11:00'])
 })
 
-test('daily doses over one hour ask unless the medication remembers yes or no', () => {
+test('early or late doses ask unless the medication remembers yes or no', () => {
   const med = medication({ type: 'daily', intervalHours: 24, weekdays: [], anchorAt: null, changes: [] })
   const dose = { scheduledAt: new Date('2026-08-06T11:00:00') }
-  const takenAt = new Date('2026-08-06T12:01:00')
+  const takenAt = new Date('2026-08-06T11:11:00')
 
   assert.deepEqual(
     doseScheduleAdjustmentDecision(med, dose, takenAt),
@@ -943,6 +973,200 @@ test('daily doses over one hour ask unless the medication remembers yes or no', 
     doseScheduleAdjustmentDecision({ ...med, scheduleAdjustmentPreference: 'no' }, dose, takenAt),
     { adjustSchedule: false, prompt: false },
   )
+})
+
+test('hourly schedules remain dose-relative without prompting', () => {
+  const med = medication({
+    type: 'interval',
+    intervalHours: 6,
+    weekdays: [],
+    anchorAt: '2026-08-06T11:00:00',
+    changes: [],
+  })
+  assert.deepEqual(
+    doseScheduleAdjustmentDecision(
+      med,
+      { scheduledAt: new Date('2026-08-06T11:00:00') },
+      new Date('2026-08-06T12:00:00'),
+    ),
+    { adjustSchedule: true, prompt: false },
+  )
+})
+
+test('weekly and every-N-days doses ask before shifting future dose times', () => {
+  const dose = { scheduledAt: new Date('2026-08-06T11:00:00') }
+  const takenAt = new Date('2026-08-06T12:00:00')
+  for (const schedule of [
+    { type: 'weekly', intervalHours: 24, weekdays: [4], anchorAt: null, changes: [] },
+    {
+      type: 'day-interval',
+      intervalHours: 24,
+      intervalDays: 6,
+      weekdays: [],
+      anchorAt: '2026-08-06T11:00:00',
+      changes: [],
+    },
+  ]) {
+    const med = medication(schedule)
+    assert.deepEqual(
+      doseScheduleAdjustmentDecision(med, dose, takenAt),
+      { adjustSchedule: false, prompt: true },
+    )
+    assert.deepEqual(
+      doseScheduleAdjustmentDecision(
+        { ...med, scheduleAdjustmentPreference: 'no' },
+        dose,
+        takenAt,
+      ),
+      { adjustSchedule: false, prompt: false },
+    )
+  }
+})
+
+test('weekly confirmation changes only future dose times, not scheduled days', () => {
+  const scheduledAt = new Date('2026-08-06T11:00:00')
+  const takenAt = new Date('2026-08-07T15:00:00')
+  const med = medication({
+    type: 'weekly',
+    intervalHours: 168,
+    weekdays: [4],
+    anchorAt: null,
+    changes: [],
+  }, ['11:00'])
+  const dose = { medication: med, scheduledAt, slotIndex: 0 }
+  const adjustment = adjustScheduleAfterDose(med, dose, takenAt, {
+    adjustSchedule: true,
+  })
+  const updated = setRecurrenceAnchor({
+    ...med,
+    times: adjustment.times,
+    schedule: adjustment.schedule,
+    history: [{
+      id: 'weekly-taken',
+      scheduledAt: scheduledAt.toISOString(),
+      originalScheduledAt: adjustment.originalScheduledAt?.toISOString() || null,
+      takenAt: takenAt.toISOString(),
+      status: 'late',
+    }],
+  }, adjustment.recurrenceAt, 'taken', {
+    consumed: true,
+    scheduledAt,
+    slotIndex: 0,
+  })
+  const next = getNextDose([updated], new Date('2026-08-07T15:01:00'))
+
+  assert.equal(next.scheduledAt.getDay(), 4)
+  assert.equal(next.scheduledAt.getDate(), 13)
+  assert.equal(next.scheduledAt.getHours(), 15)
+  const restored = undoScheduleAfterDose(updated, updated.history[0])
+  assert.deepEqual(restored.times, ['11:00'])
+  assert.equal(restored.schedule.changes.length, 0)
+})
+
+test('declining a weekly time change preserves its future scheduled time', () => {
+  const scheduledAt = new Date('2026-08-06T11:00:00')
+  const takenAt = new Date('2026-08-07T15:00:00')
+  const med = medication({
+    type: 'weekly',
+    intervalHours: 168,
+    weekdays: [4],
+    anchorAt: null,
+    changes: [],
+  }, ['11:00'])
+  const dose = { medication: med, scheduledAt, slotIndex: 0 }
+  const adjustment = adjustScheduleAfterDose(med, dose, takenAt, {
+    adjustSchedule: false,
+  })
+  const updated = setRecurrenceAnchor({
+    ...med,
+    times: adjustment.times,
+    schedule: adjustment.schedule,
+    history: [{
+      id: 'weekly-taken',
+      scheduledAt: scheduledAt.toISOString(),
+      takenAt: takenAt.toISOString(),
+      status: 'late',
+    }],
+  }, adjustment.recurrenceAt, 'taken', {
+    consumed: true,
+    scheduledAt,
+    slotIndex: 0,
+  })
+  const next = getNextDose([updated], new Date('2026-08-07T15:01:00'))
+
+  assert.equal(next.scheduledAt.getDay(), 4)
+  assert.equal(next.scheduledAt.getDate(), 13)
+  assert.equal(next.scheduledAt.getHours(), 11)
+})
+
+test('every-N-days confirmation changes only time, not interval dates', () => {
+  const scheduledAt = new Date('2026-08-06T11:00:00')
+  const takenAt = new Date('2026-08-07T15:00:00')
+  const med = medication({
+    type: 'day-interval',
+    intervalHours: 24,
+    intervalDays: 6,
+    weekdays: [],
+    anchorAt: scheduledAt.toISOString(),
+    changes: [],
+  }, ['11:00'])
+  const dose = { medication: med, scheduledAt, slotIndex: 0 }
+  const adjustment = adjustScheduleAfterDose(med, dose, takenAt, {
+    adjustSchedule: true,
+  })
+  const updated = setRecurrenceAnchor({
+    ...med,
+    times: adjustment.times,
+    schedule: adjustment.schedule,
+    history: [{
+      id: 'interval-taken',
+      scheduledAt: scheduledAt.toISOString(),
+      takenAt: takenAt.toISOString(),
+      status: 'late',
+    }],
+  }, adjustment.recurrenceAt, 'taken', {
+    consumed: true,
+    scheduledAt,
+    slotIndex: 0,
+  })
+  const next = getNextDose([updated], new Date('2026-08-07T15:01:00'))
+
+  assert.equal(next.scheduledAt.getDate(), 12)
+  assert.equal(next.scheduledAt.getHours(), 15)
+})
+
+test('declined daily time changes survive schedule normalization', () => {
+  const scheduledAt = new Date('2026-08-06T11:00:00')
+  const takenAt = new Date('2026-08-06T15:00:00')
+  const med = medication({
+    type: 'daily',
+    intervalHours: 24,
+    weekdays: [],
+    anchorAt: null,
+    changes: [],
+  }, ['11:00'])
+  const adjustment = adjustScheduleAfterDose(
+    med,
+    { medication: med, scheduledAt, slotIndex: 0 },
+    takenAt,
+    { adjustSchedule: false },
+  )
+  const declined = setRecurrenceAnchor({
+    ...med,
+    history: [{
+      id: 'declined-shift',
+      scheduledAt: scheduledAt.toISOString(),
+      takenAt: takenAt.toISOString(),
+      status: 'late',
+    }],
+  }, adjustment.recurrenceAt, 'taken', {
+    consumed: true,
+    scheduledAt,
+    slotIndex: 0,
+  })
+
+  assert.deepEqual(repairDynamicSchedule(declined).times, ['11:00'])
+  assert.equal(repairDynamicSchedule(declined).schedule.changes.length, 0)
 })
 
 test('overrides daily, interval, and weekly times from a dose card', () => {

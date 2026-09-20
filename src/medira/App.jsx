@@ -1202,26 +1202,23 @@ function MedicationDetails({
             </div>}
           </div>
         </div>
-        {permissions.canViewSchedule && medication.schedule?.type === 'daily' && (
-          <label className="detail-schedule-adjustment">
-            <input type="checkbox"
-              checked={medication.scheduleAdjustmentPreference === 'yes'}
-              disabled={!permissions.canEdit}
-              onChange={(event) => onScheduleAdjustmentPreference(
-                medication,
-                event.target.checked ? 'yes' : 'no',
-              )} />
-            <span>
-              <strong>Automatic schedule adjustments</strong>
-              <small>
-                {medication.scheduleAdjustmentPreference === 'yes'
-                  ? 'Enabled'
-                  : medication.scheduleAdjustmentPreference === 'no'
-                    ? 'Disabled'
-                    : 'Ask before changing times'}
-              </small>
-            </span>
-          </label>
+        {permissions.canViewSchedule && (
+          <fieldset className="detail-schedule-adjustment" disabled={!permissions.canEdit}>
+            <legend>Future dose time changes</legend>
+            {[
+              [null, 'Ask every time'],
+              ['yes', 'Always update'],
+              ['no', 'Never update'],
+            ].map(([preference, label]) => (
+              <label key={label}>
+                <input type="radio" name={`schedule-adjustment-${medication.id}`}
+                  checked={(medication.scheduleAdjustmentPreference ?? null) === preference}
+                  onChange={() => onScheduleAdjustmentPreference(medication, preference)} />
+                <span>{label}</span>
+              </label>
+            ))}
+            <small>Applies when a dose is taken early or late.</small>
+          </fieldset>
         )}
         {medication.trackInjectionSite && <section className="detail-site-map">
           <InjectionSiteMap medication={medication} compact />
@@ -1759,7 +1756,7 @@ function App({ colorScheme = 'dark' }) {
           ...med.inventory,
           remaining: Math.max(0, inventoryInteger(med.inventory.remaining) - 1),
         },
-      }, adjustSchedule ? takenAt : dose.scheduledAt, 'taken', {
+      }, adjustment.recurrenceAt, 'taken', {
         consumed: true,
         scheduledAt: dose.scheduledAt,
         slotIndex: dose.slotIndex,
@@ -2060,14 +2057,21 @@ function App({ colorScheme = 'dark' }) {
         sharing={sharing} onClose={() => setShowSharing(false)} />}
       {pendingDose && <InjectionSitePicker medication={pendingDose.medication} onSelect={(site) => requestTakenCompletion(pendingDose, site)} onClose={() => setPendingDose(null)} />}
       {pendingScheduleAdjustment && (
-        <div className="modal-overlay" onClick={() => setPendingScheduleAdjustment(null)}>
+        <div className="modal-overlay" onClick={() => completeTaken(
+          pendingScheduleAdjustment.dose,
+          pendingScheduleAdjustment.injectionSite,
+          pendingScheduleAdjustment.takenAt,
+          false,
+        )}>
           <section className="modal schedule-adjustment-modal" role="dialog" aria-modal="true"
             aria-labelledby="schedule-adjustment-title" onClick={(event) => event.stopPropagation()}>
             <h3 className="modal-title" id="schedule-adjustment-title">Update schedule?</h3>
             <p className="modal-body">
-              Would you like to update following medications to be at{' '}
-              {pendingScheduleAdjustment.takenAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}{' '}
-              adjusted time?
+              You took {pendingScheduleAdjustment.dose.medication.name} at{' '}
+              {pendingScheduleAdjustment.takenAt.toLocaleTimeString([], {
+                hour: 'numeric',
+                minute: '2-digit',
+              })}. Would you like future doses to use this time?
             </p>
             <label className="remember-adjustment">
               <input type="checkbox" checked={rememberScheduleAdjustment}

@@ -1,7 +1,7 @@
 const MINUTE = 60 * 1000
 const DAY = 24 * 60 * MINUTE
 export const ON_TIME_WINDOW = 10 * MINUTE
-export const SCHEDULE_ADJUSTMENT_THRESHOLD = 60 * MINUTE
+export const SCHEDULE_ADJUSTMENT_THRESHOLD = ON_TIME_WINDOW
 const MISSED_WINDOW = 30 * MINUTE
 const dateFormatters = new Map()
 const dateTimeFormatters = new Map()
@@ -120,6 +120,17 @@ function dateKeyInTimeZone(date, timeZone) {
   } catch {
     return localDateKey(date)
   }
+}
+
+function timeKeyInTimeZone(date, timeZone) {
+  if (!timeZone) return date.toTimeString().slice(0, 5)
+  const parts = formatterFor(timeFormatters, timeZone, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date)
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]))
+  return `${values.hour}:${values.minute}`
 }
 
 function dateKeyValue(dateKey) {
@@ -288,7 +299,7 @@ function isDoseRelativeSchedule(schedule) {
 
 export function doseScheduleAdjustmentDecision(medication, dose, takenAtValue) {
   const schedule = scheduleFor(medication)
-  if (schedule.type !== 'daily') {
+  if (schedule.type === 'interval') {
     return { adjustSchedule: true, prompt: false }
   }
   const scheduledAt = new Date(dose.scheduledAt)
@@ -296,7 +307,7 @@ export function doseScheduleAdjustmentDecision(medication, dose, takenAtValue) {
   if (Number.isNaN(scheduledAt.getTime()) || Number.isNaN(takenAt.getTime())) {
     return { adjustSchedule: false, prompt: false }
   }
-  if (Math.abs(takenAt - scheduledAt) <= SCHEDULE_ADJUSTMENT_THRESHOLD) {
+  if (Math.abs(takenAt - scheduledAt) <= ON_TIME_WINDOW) {
     return { adjustSchedule: false, prompt: false }
   }
   if (medication.scheduleAdjustmentPreference === 'yes') {
@@ -497,16 +508,7 @@ export function setRecurrenceAnchor(
     schedule.type === 'weekly' || schedule.type === 'day-interval'
   const ownerTimeZone = scheduleTimeZone(medication)
   const anchorTime = fixedCalendarSchedule
-    ? (() => {
-        if (!ownerTimeZone) return at.toTimeString().slice(0, 5)
-        const parts = formatterFor(timeFormatters, ownerTimeZone, {
-          hour: '2-digit',
-          minute: '2-digit',
-          hourCycle: 'h23',
-        }).formatToParts(at)
-        const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]))
-        return `${values.hour}:${values.minute}`
-      })()
+    ? timeKeyInTimeZone(at, ownerTimeZone)
     : null
   return {
     ...medication,
@@ -905,24 +907,38 @@ export function adjustScheduleAfterDose(
   shiftedAt.setSeconds(0, 0)
   const scheduledAt = new Date(dose.scheduledAt)
   scheduledAt.setSeconds(0, 0)
+  const fixedCalendarSchedule =
+    schedule.type === 'weekly' || schedule.type === 'day-interval'
+  const ownerTimeZone = scheduleTimeZone(medication)
+  const adjustedAnchorAt = fixedCalendarSchedule && adjustSchedule
+    ? instantForCalendarTime(
+        dateKeyInTimeZone(scheduledAt, ownerTimeZone),
+        timeKeyInTimeZone(shiftedAt, ownerTimeZone),
+        ownerTimeZone,
+      )
+    : shiftedAt
   const shifted =
     adjustSchedule &&
-    isDoseRelativeSchedule(schedule) &&
-    shiftedAt.getTime() !== scheduledAt.getTime()
+    adjustedAnchorAt.getTime() !== scheduledAt.getTime()
   const shiftMinutes = Math.round((shiftedAt - scheduledAt) / MINUTE)
   return {
     shifted,
-    scheduledAt: shifted ? shiftedAt : dose.scheduledAt,
+    scheduledAt: shifted && !fixedCalendarSchedule ? shiftedAt : dose.scheduledAt,
     originalScheduledAt: shifted ? dose.scheduledAt : null,
+    recurrenceAt: shifted ? adjustedAnchorAt : scheduledAt,
     times: shifted && schedule.type === 'daily'
       ? medication.times.map((time) => shiftTime(time, shiftMinutes)).sort()
+      : shifted && fixedCalendarSchedule
+        ? [timeKeyInTimeZone(adjustedAnchorAt, ownerTimeZone)]
       : medication.times,
     schedule: shifted
       ? {
           ...schedule,
           anchorAt: schedule.type === 'interval' ? shiftedAt.toISOString() : schedule.anchorAt,
           changes: [...schedule.changes, {
-            effectiveAt: shiftedAt.toISOString(),
+            effectiveAt: fixedCalendarSchedule
+              ? scheduledAt.toISOString()
+              : shiftedAt.toISOString(),
             previous: {
               type: schedule.type,
               intervalHours: schedule.intervalHours,
@@ -940,6 +956,7 @@ export function adjustScheduleAfterDose(
 export function repairDynamicSchedule(medication) {
   const schedule = scheduleFor(medication)
   if (!isDoseRelativeSchedule(schedule)) return medication
+  if (medication.recurrenceAnchor?.at) return medication
   const latest = getLastTaken(medication)
   if (!latest?.scheduledAt) return medication
   const takenAt = new Date(latest.takenAt)
