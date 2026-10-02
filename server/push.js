@@ -4,6 +4,7 @@ import cron from 'node-cron'
 import { query } from './db.js'
 import { requireAuth } from './auth.js'
 import { isScheduled, dateKey } from '../src/lib.js'
+import { getUpcomingReminders } from '../src/medira/lib.js'
 import {
   dispatchCollaborationPushes,
   queueAutomaticBuddyReminders,
@@ -221,43 +222,120 @@ async function tick() {
   }
   if (!configured) return
   const subs = (await query('SELECT endpoint, user_id, subscription, tz, reminders FROM push_subscriptions')).rows
-  for (const sub of subs) {
-    const reminders = Array.isArray(sub.reminders) ? sub.reminders : []
-    const remaining = []
-    let subscriptionRemoved = false
-    for (const reminder of reminders) {
-      if (new Date(reminder.alertAt).getTime() > Date.now()) {
-        remaining.push(reminder)
-        continue
-      }
-      try {
-        await webpush.sendNotification(
-          asObj(sub.subscription),
-          JSON.stringify({
-            title: reminder.title || 'Medication reminder',
-            body: reminder.body || 'A medication is scheduled.',
-            tag: reminder.tag,
-            icon: reminder.icon || '/medication-icon.png',
-          }),
-        )
-      } catch (err) {
-        if ([403, 404, 410].includes(err?.statusCode)) {
-          await query('DELETE FROM push_subscriptions WHERE endpoint = $1', [sub.endpoint]).catch(() => {})
-          subscriptionRemoved = true
-          break
-        }
-        remaining.push(reminder)
-      }
-    }
-    if (subscriptionRemoved) continue
-    if (remaining.length !== reminders.length) {
-      await query('UPDATE push_subscriptions SET reminders = $1 WHERE endpoint = $2', [
-        JSON.stringify(remaining),
-        sub.endpoint,
-      ])
-    }
+  try {
+    await dispatchMedicationReminders({ subscriptions: subs })
+  } catch (error) {
+    console.error('medication push tick', error)
   }
   await dispatchStreakReminders({ subscriptions: subs })
+}
+
+function minuteStart(instant) {
+  const start = new Date(instant)
+  start.setSeconds(0, 0)
+  return start
+}
+
+function mergeMedicationReminders(stored, planned, instant) {
+  const retryCutoff = instant.getTime() - 60 * 60 * 1000
+  const dueRetries = stored.filter((reminder) => {
+    const alertAt = new Date(reminder.alertAt).getTime()
+    return Number.isFinite(alertAt) &&
+      alertAt >= retryCutoff &&
+      alertAt <= instant.getTime()
+  })
+  return [...new Map(
+    [...dueRetries, ...planned]
+      .filter((reminder) => reminder.id || reminder.tag)
+      .map((reminder) => [reminder.id || reminder.tag, reminder]),
+  ).values()]
+}
+
+export async function dispatchMedicationReminders({
+  subscriptions,
+  queryFn = query,
+  instant = new Date(),
+  sendNotification = (subscription, payload, options) =>
+    webpush.sendNotification(subscription, payload, options),
+}) {
+  const remindersByUser = new Map()
+  let sent = 0
+  for (const sub of subscriptions) {
+    try {
+      const userId = String(sub.user_id)
+      if (!remindersByUser.has(userId)) {
+        const result = await queryFn(
+          `SELECT medication.id, medication.legacy_id,
+                  medication.medication_data, users.timezone AS owner_timezone
+           FROM medications medication
+           JOIN users ON users.id = medication.owner_user_id
+           WHERE medication.owner_user_id = $1
+             AND medication.deleted_at IS NULL
+           ORDER BY medication.legacy_position, medication.id`,
+          [sub.user_id],
+        )
+        const medications = result.rows.map((row) => {
+          const data = asObj(row.medication_data)
+          return {
+            ...data,
+            id: row.legacy_id || data?.id || String(row.id),
+            schedule: {
+              ...data?.schedule,
+              timezone: data?.schedule?.timezone || row.owner_timezone || sub.tz || 'UTC',
+            },
+          }
+        })
+        remindersByUser.set(userId, getUpcomingReminders(
+          medications,
+          minuteStart(instant),
+        ).slice(0, 500))
+      }
+      const stored = Array.isArray(sub.reminders) ? sub.reminders : []
+      const reminders = mergeMedicationReminders(
+        stored,
+        remindersByUser.get(userId),
+        instant,
+      )
+      const retries = []
+      let subscriptionRemoved = false
+      for (const reminder of reminders) {
+        if (new Date(reminder.alertAt).getTime() > instant.getTime()) continue
+        try {
+          await sendNotification(
+            asObj(sub.subscription),
+            JSON.stringify({
+              title: reminder.title || 'Medication reminder',
+              body: reminder.body || 'A medication is scheduled.',
+              tag: reminder.tag,
+              icon: reminder.icon || '/medication-icon.png',
+            }),
+            { TTL: 3600, urgency: 'high' },
+          )
+          sent++
+        } catch (err) {
+          if ([403, 404, 410].includes(err?.statusCode)) {
+            await queryFn(
+              'DELETE FROM push_subscriptions WHERE endpoint = $1',
+              [sub.endpoint],
+            ).catch(() => {})
+            subscriptionRemoved = true
+            break
+          }
+          retries.push(reminder)
+        }
+      }
+      if (subscriptionRemoved) continue
+      if (JSON.stringify(retries) !== JSON.stringify(stored)) {
+        await queryFn(
+          'UPDATE push_subscriptions SET reminders = $1 WHERE endpoint = $2',
+          [JSON.stringify(retries), sub.endpoint],
+        )
+      }
+    } catch (error) {
+      console.error(`medication push planning error for user ${sub.user_id}`, error)
+    }
+  }
+  return sent
 }
 
 export function startPushCron() {

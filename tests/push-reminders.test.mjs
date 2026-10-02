@@ -5,10 +5,167 @@ import { fileURLToPath } from 'node:url'
 import sharp from 'sharp'
 import { reminderPlan } from '../src/notify.js'
 import {
+  dispatchMedicationReminders,
   dispatchStreakReminders,
   streakReminderDate,
   streakReminderPhase,
 } from '../server/push.js'
+
+test('server dispatches medication reminders without an open app', async () => {
+  const calls = []
+  const sent = []
+  const queryFn = async (text, params) => {
+    calls.push({ text, params })
+    if (text.includes('FROM medications medication')) {
+      return {
+        rows: [{
+          id: 12,
+          legacy_id: 'medication-12',
+          owner_timezone: 'UTC',
+          medication_data: {
+            id: 'medication-12',
+            name: 'Medication',
+            dose: '10 mg',
+            createdAt: '2026-10-01T00:00:00.000Z',
+            times: ['09:00'],
+            schedule: {
+              type: 'daily',
+              intervalHours: 24,
+              timezone: 'UTC',
+              weekdays: [],
+              changes: [],
+            },
+            notifications: { enabled: true, advanceMinutes: [0] },
+            history: [],
+            pausePeriods: [],
+          },
+        }],
+      }
+    }
+    return { rows: [] }
+  }
+  const subscriptions = [{
+    endpoint: 'ios-endpoint',
+    user_id: 7,
+    subscription: { endpoint: 'ios-endpoint' },
+    reminders: [],
+  }]
+
+  assert.equal(await dispatchMedicationReminders({
+    subscriptions,
+    queryFn,
+    instant: new Date('2026-10-02T09:00:20.000Z'),
+    sendNotification: async (_subscription, payload, options) => {
+      sent.push({ payload: JSON.parse(payload), options })
+    },
+  }), 1)
+  assert.equal(sent[0].payload.title, 'Medication')
+  assert.deepEqual(sent[0].options, { TTL: 3600, urgency: 'high' })
+  assert.ok(calls.some(({ text }) => text.includes('FROM medications medication')))
+})
+
+test('server retains failed medication pushes for closed-app retry', async () => {
+  const updates = []
+  let attempts = 0
+  const reminder = {
+    id: 'retry-reminder',
+    alertAt: '2026-10-02T08:59:00.000Z',
+    title: 'Medication',
+    body: 'Scheduled dose',
+    tag: 'dose-retry',
+  }
+  const queryFn = async (text, params) => {
+    if (text.includes('FROM medications medication')) return { rows: [] }
+    if (text.includes('UPDATE push_subscriptions')) updates.push(params)
+    return { rows: [] }
+  }
+
+  assert.equal(await dispatchMedicationReminders({
+    subscriptions: [{
+      endpoint: 'ios-endpoint',
+      user_id: 7,
+      subscription: { endpoint: 'ios-endpoint' },
+      reminders: [reminder],
+    }],
+    queryFn,
+    instant: new Date('2026-10-02T09:00:20.000Z'),
+    sendNotification: async () => {
+      attempts++
+      throw new Error('Temporary APNs failure')
+    },
+  }), 0)
+  assert.equal(attempts, 1)
+  assert.equal(updates.length, 0)
+})
+
+test('server drops stale future plans when medication schedules change', async () => {
+  const updates = []
+  const queryFn = async (text, params) => {
+    if (text.includes('FROM medications medication')) return { rows: [] }
+    if (text.includes('UPDATE push_subscriptions')) updates.push(params)
+    return { rows: [] }
+  }
+  await dispatchMedicationReminders({
+    subscriptions: [{
+      endpoint: 'ios-endpoint',
+      user_id: 7,
+      subscription: { endpoint: 'ios-endpoint' },
+      reminders: [{
+        id: 'deleted-medication',
+        alertAt: '2026-10-03T09:00:00.000Z',
+        tag: 'deleted-medication',
+      }],
+    }],
+    queryFn,
+    instant: new Date('2026-10-02T09:00:20.000Z'),
+    sendNotification: async () => {},
+  })
+
+  assert.deepEqual(JSON.parse(updates[0][0]), [])
+})
+
+test('server uses owner timezone for legacy medication schedules', async () => {
+  const sent = []
+  const queryFn = async (text) => {
+    if (text.includes('FROM medications medication')) {
+      return {
+        rows: [{
+          id: 12,
+          legacy_id: 'legacy-medication',
+          owner_timezone: 'America/Los_Angeles',
+          medication_data: {
+            name: 'Legacy medication',
+            createdAt: '2026-10-01T00:00:00.000Z',
+            times: ['09:00'],
+            schedule: { type: 'daily', weekdays: [], changes: [] },
+            notifications: { enabled: true, advanceMinutes: [0] },
+            history: [],
+            pausePeriods: [],
+          },
+        }],
+      }
+    }
+    return { rows: [] }
+  }
+
+  await dispatchMedicationReminders({
+    subscriptions: [{
+      endpoint: 'ios-endpoint',
+      user_id: 7,
+      tz: 'America/Los_Angeles',
+      subscription: { endpoint: 'ios-endpoint' },
+      reminders: [],
+    }],
+    queryFn,
+    instant: new Date('2026-10-02T16:00:20.000Z'),
+    sendNotification: async (_subscription, payload) => {
+      sent.push(JSON.parse(payload))
+    },
+  })
+
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].title, 'Legacy medication')
+})
 
 test('streak reminders run at 9 AM and five minutes before the deadline', () => {
   assert.equal(streakReminderPhase({ hh: '09', mm: '00' }), 'morning')
