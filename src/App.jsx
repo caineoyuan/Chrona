@@ -458,6 +458,15 @@ function Workspace({ theme }) {
                   currentBuddy.id,
                   Boolean(next.completions?.[todayKey()]),
                 ).catch(() => {})
+                // Freeze/reminder toggles are personal — persist them on the
+                // backing local set so they actually stick for buddy streaks.
+                if (localCurrent) {
+                  upsertSet({
+                    ...localCurrent,
+                    freezes: next.freezes,
+                    notify: next.notify,
+                  })
+                }
               } else upsertSet(next)
             }}
             onCompletionDateChange={currentBuddy

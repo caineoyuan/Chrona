@@ -18,7 +18,10 @@ export function buddySetForUser(streak, userId, fallback = {}) {
       ? definition.steps
       : (Array.isArray(fallback.steps) ? fallback.steps : []),
     completions,
+    // Freeze and reminder preferences are personal, not shared — always take
+    // them from the viewer's local set so the shared definition can't override.
     freezes: fallback.freezes || {},
+    notify: fallback.notify ?? definition.notify ?? true,
     buddyStreakId: streak.id,
   }
 }
